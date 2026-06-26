@@ -11,7 +11,7 @@
 │  │                    Go TUI (main.go)                        │  │
 │  │  - 60 FPS Bubble Tea rendering                             │  │
 │  │  - Platform switching (Tab key)                            │  │
-│  │  - Theme system (7 RPG themes)                             │  │
+│  │  - Theme system (7 themes)                             │  │
 │  │  - Config/theme overlays                                   │  │
 │  └────────────────────────────────────────────────────────────┘  │
 │                              │                                    │
@@ -233,7 +233,7 @@ func sendToClaude(message string) tea.Cmd {
 
 ### Adding Themes
 
-Add to `rpgThemes` slice in `main.go`:
+Add to `colorThemes` slice in `main.go`:
 ```go
 {
     Name: "Custom",

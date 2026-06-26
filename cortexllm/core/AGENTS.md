@@ -1,6 +1,6 @@
 # CortexLLM - Brain-First Multi-Agent System
 
-**Version:** 2026.6.23
+**Version 1.0.0
 
 ## What is CortexLLM?
 

@@ -25,7 +25,7 @@
 - [x] Bubble Tea framework
 - [x] 3-pane layout (Sidebar | Chat | Diagnostics)
 - [x] Tab switching (OpenCode/Claude/OpenClaw/Memory)
-- [x] 7 RPG themes (Sovereign, Shadow, Netrunner, etc.)
+- [x] 7 themes
 - [x] Theme picker (Ctrl+T)
 - [x] Config overlay (Ctrl+P)
 - [x] 60 FPS animations

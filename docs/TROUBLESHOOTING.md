@@ -227,7 +227,7 @@ export TERM=xterm-256color
 ```bash
 # Theme is stored in TUI state
 # Press Ctrl+T to cycle themes
-# Restart TUI to reset to default (Sovereign)
+# Restart TUI to reset to default (default theme)
 ```
 
 ## Search/Browser Issues

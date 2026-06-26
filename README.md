@@ -8,7 +8,9 @@
 
 A beautiful, fast terminal UI for managing AI conversations with persistent memory and agent orchestration. Works with OpenClaw, OpenCode, or any Ollama-compatible backend.
 
-![Demo](https://via.placeholder.com/800x450/000000/00FF41?text=CortexLLM+TUI+Demo)
+> **Status:** TUI is currently **Work in Progress**. Memory system and integrations are production-ready.
+
+![Mission Control Overview](./docs/images/mission-control-overview.png)
 
 ---
 
@@ -17,11 +19,11 @@ A beautiful, fast terminal UI for managing AI conversations with persistent memo
 | Feature | Description |
 |---------|-------------|
 | 🧠 **Unified Memory** | Hot/Warm/Cold tiers with atomic persistence |
-| ⚡ **60 FPS TUI** | Beautiful Bubble Tea interface with 7 themes |
+| ⚡ **Fast TUI** | Bubble Tea interface with multiple themes |
 | 🔌 **Platform Agnostic** | OpenClaw, OpenCode, Ollama, or direct API |
 | 🤖 **Agent System** | Brain orchestrator + specialized workers |
 | 💾 **Auto-Save** | Every 2 seconds + on quit |
-| 🎨 **RPG Themes** | Sovereign, Shadow, Netrunner, and more |
+| 🎨 **Multiple Themes** | Professional color schemes |
 
 ---
 
@@ -102,7 +104,7 @@ cortexllm tasks list
 {
   "system": {
     "name": "CortexLLM",
-    "version": "2.0.0"
+    "version": "1.0.0"
   },
   "platforms": {
     "openclaw": {
@@ -121,8 +123,8 @@ cortexllm tasks list
     "fallback": "ollama/llama3.1:8b"
   },
   "memory": {
-    "hot_limit": 50,
-    "warm_limit": 20,
+    "hot_limit": 500,
+    "warm_limit": 2000,
     "auto_rotate": true
   },
   "gateway": {
@@ -193,9 +195,17 @@ export OLLAMA_HOST=127.0.0.1:11434
 
 | Tier | Location | Limit | Purpose |
 |------|----------|-------|---------|
-| **HOT** | `~/.config/cortexllm/memory/hot/` | 50 msgs | Active sessions |
-| **WARM** | `~/.config/cortexllm/memory/warm/` | 20 msgs | Shared context |
-| **COLD** | `~/.config/cortexllm/memory/cold/` | Unlimited | Archives |
+| **HOT** | `~/.config/cortexllm/memory/hot/` | 500 msgs | Active sessions |
+| **WARM** | `~/.config/cortexllm/memory/warm/` | 2000 msgs | Shared context with buffer |
+| **COLD** | `~/.config/cortexllm/memory/cold/` | Unlimited | Permanent knowledge |
+
+### Buffer Algorithm
+
+The warm memory tier uses a 70/30 buffer algorithm:
+- **70% Recent** (1400 messages) - Weighted by platform usage
+- **30% Buffer** (600 messages) - Always preserved from both platforms (300 each)
+
+This ensures neither OpenCode nor OpenClaw ever loses context, even if one platform is used exclusively for extended periods.
 
 ---
 
@@ -205,13 +215,11 @@ Press `Ctrl+T` to open the theme picker:
 
 | Theme | Description | Colors |
 |-------|-------------|--------|
-| Sovereign | Keeper of ancient wisdom | Green/Gold |
-| Shadow | Master of stealth | Red/Grey |
-| Netrunner | Ghost in the machine | Matrix Green |
-| Aviator | Navigator of skies | Orange/Blue |
-| Aquanaut | Explorer of the deep | Cyan/Navy |
-| Industrialist | Baron of industry | Brass/Copper |
-| Astronaut | Voyager of the void | White/Blue |
+| Cyber Pastel | Modern terminal aesthetic | Blue/Purple/Mint |
+| Ocean Breeze | Calm sea-inspired tones | Cyan/Indigo/Teal |
+| Forest Mist | Natural earth tones | Sage/Seafoam/Sun |
+
+More themes coming in future releases.
 
 ---
 
@@ -262,7 +270,7 @@ To add Claude, OpenAI, or other providers, update config:
 ### Build from Source
 ```bash
 # Build Go TUI
-cd ~/.openclaw/cortexllm
+cd cortexllm
 go build -o ~/.local/bin/cortexllm ./main.go
 
 # Install Python workers
@@ -378,6 +386,6 @@ MIT License - See [LICENSE](LICENSE) file for details.
 
 ---
 
-**Built by [@GreyOK_0](https://github.com/greyok00)**
+**Built by [@greyok00](https://github.com/greyok00)**
 
 *Terminal-native AI for the modern developer*

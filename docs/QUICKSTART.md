@@ -84,9 +84,9 @@ cortexllm
 ## Themes
 
 Press `Ctrl+T` to cycle through 7 themes:
-- **Sovereign** - Green/Gold (default)
-- **Shadow** - Red/Grey
-- **Netrunner** - Matrix Green
+- **
+- **
+- **
 - **Aviator** - Orange/Blue
 - **Aquanaut** - Cyan/Navy
 - **Industrialist** - Brass/Copper
