@@ -12,19 +12,55 @@ CortexLLM is a fast local AI control system built for task execution and continu
 
 ![Mission Control Overview](./docs/images/mission-control-overview.png)
 
----
-
-## Features
-
-| Feature | Description |
-|---------|-------------|
-| 🧠 **Unified Memory** | Hot/Warm/Cold tiers with atomic persistence |
-| ⚡ **Fast TUI** | Bubble Tea interface with multiple themes |
-| 🔌 **Platform Agnostic** | OpenClaw, OpenCode, Ollama, or direct API |
-| 🤖 **Agent System** | Brain orchestrator + specialized workers |
-| 💾 **Auto-Save** | Every 2 seconds + on quit |
-| 🎨 **Multiple Themes** | Professional color schemes |
-
+CortexLLM is a high-performance, terminal-based AI orchestration system (Version 1.0.0) designed to unify reasoning, automation, and long-term memory into a single mission control center
+. Built on the principle of no redundancy, it coordinates specialized "workers"—OpenCode for strategic planning and OpenClaw for tactical execution—under a central Brain to ensure a seamless, persistent work loop
+.
+1. The Core Architecture: Worker-Based Orchestration
+CortexLLM functions as a unified runtime where different AI sub-agents collaborate on complex, multi-step tasks
+.
+The Brain: The central orchestrator that manages unified sessions and links tasks between reasoning and action via a central session.json
+.
+OpenCode (The Planner): A specialized sub-agent for high-level reasoning, code generation, and strategic analysis
+.
+OpenClaw (The Executor): The "hands" of the system, capable of performing browser automation via a dedicated gateway (port 18789), executing shell commands, and managing local file operations
+.
+2. Unified Multi-Tier Memory & The Buffer Algorithm
+The system solves the problem of "platform isolation" by ensuring that neither worker loses context when the user switches tasks
+.
+Hot Memory: Active 500-message per-platform buffers for instant session resumption
+.
+Warm Memory (The 70/30 Buffer): A unified 2,000-message context file
+. It uses a mathematical algorithm to preserve a mandatory 30% buffer (300 messages each) for both OpenCode and OpenClaw at all times, while the remaining 70% shifts dynamically based on current activity
+.
+Cold Memory: A permanent repository that saves auto-discovered workflows, verified API endpoints, and system rules, ensuring that knowledge gained in one session is available "forever"
+.
+3. The SEARCH FIRST Protocol (Anti-Hallucination)
+To eliminate AI hallucinations, CortexLLM enforces a mandatory verification rule before any code is generated or executed
+. Every worker must:
+Verify CLI flags via --help
+.
+Check service health and running ports (e.g., curl <port>/health)
+.
+Search local source code for implementation patterns using grep
+.
+Show research results to the user BEFORE implementation
+.
+4. Blazing Fast Terminal Interface (TUI)
+The system is built with Go and the Bubble Tea framework to ensure it stays fast and stays in your workflow
+.
+60 FPS Performance: A locked 16ms refresh rate with real-time latency monitoring for both Ollama and the OpenClaw Gateway
+.
+2-Pane Layout: A high-contrast diagnostic panel on the left (showing system health and uptime) and a flexible, full-width chat viewport on the right
+.
+Seamless Resumption: The system tracks is_last_command for each platform, allowing you to switch between reasoning and automation instantly without re-explaining your progress
+.
+5. Technical Reliability & Integrity
+Atomic Writes: Memory updates use a .tmp file replacement method to prevent data corruption during crashes
+.
+Auto-Unlock System: Resolves previous file-locking issues with a 2-second auto-unlock and a watchdog service that clears stale locks every second
+.
+Ultra-Low Latency: Features <100ms startup time and <10ms message save latency, making it ideal for high-volume operational work
+.
 ---
 
 ## Quick Install
