@@ -1,0 +1,42 @@
+{
+  "system": {
+    "name": "CortexLLM",
+    "version": "2.0.0"
+  },
+  "platforms": {
+    "openclaw": {
+      "enabled": true,
+      "mode": "cli",
+      "token_env": "OPENCLAW_GATEWAY_TOKEN",
+      "session_prefix": "cortexllm-"
+    },
+    "opencode": {
+      "enabled": true,
+      "mode": "ollama",
+      "endpoint": "http://127.0.0.1:11434"
+    }
+  },
+  "model": {
+    "primary": "ollama/qwen3.5:cloud",
+    "fallback": "ollama/llama3.1:8b"
+  },
+  "memory": {
+    "hot_limit": 50,
+    "warm_limit": 20,
+    "auto_rotate": true,
+    "path": "~/.config/cortexllm/memory"
+  },
+  "gateway": {
+    "port": 18789,
+    "bind": "lan"
+  },
+  "browser": {
+    "enabled": true,
+    "cdp_url": "http://127.0.0.1:9222"
+  },
+  "search": {
+    "enabled": true,
+    "provider": "searxng",
+    "base_url": "http://127.0.0.1:8888"
+  }
+}
