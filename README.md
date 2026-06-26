@@ -6,7 +6,7 @@
 [![Python](https://img.shields.io/badge/python-3.8+-3776AB?logo=python)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-A beautiful, fast terminal UI for managing AI conversations with persistent memory and agent orchestration. Works with OpenClaw, OpenCode, or any Ollama-compatible backend.
+CortexLLM is a fast local AI control system built for task execution and continuous learning. It keeps recent context in hot memory, promotes durable knowledge into cold storage, and uses a heartbeat to recover sessions and rehydrate context automatically. The result is that it can move through repetitive or high-volume work much faster than wiki-style memory systems, while still learning over time instead of starting from scratch each session.
 
 > **Status:** TUI is currently **Work in Progress**. Memory system and integrations are production-ready.
 
