@@ -41,7 +41,7 @@ CortexLLM is a terminal-based AI control system that coordinates multiple AI age
 │   ┌──────────────────────────────────────────────────────┐  │
 │   │                   BRAIN (Orchestrator)                │  │
 │   │   Reasoning Slot          Worker Slot                 │  │
-│   │   (qwen/qwen3.5 cloud)    (deepseek/deepseek-chat)    │  │
+│   │   (qwen/qwen3.5)          (deepseek/deepseek-chat)    │  │
 │   └────────────────────────┬─────────────────────────────┘  │
 │                            │                                 │
 │        ┌───────────────────┼───────────────────┐            │
@@ -82,11 +82,11 @@ CortexLLM is a terminal-based AI control system that coordinates multiple AI age
 Each slot is configured independently in `config.json` or via environment variables:
 
 ```
-Reasoning Slot → qwen/qwen3.5 (cloud)
-Worker Slot    → deepseek/deepseek-chat (cloud)
+Reasoning Slot → qwen/qwen3.5   (via Ollama)
+Worker Slot    → deepseek/deepseek-chat  (via Ollama)
 ```
 
-Override either slot to a local Ollama instance without touching the other.
+Both slots use the local Ollama instance at `http://127.0.0.1:11434` by default.
 
 ---
 
@@ -134,7 +134,7 @@ cortexllm
 ### Core
 - **Go 1.24+** — TUI binary
 - **Python 3.10+** — Worker backend
-- **Ollama** running on port 11434 (optional — only needed if using local model overrides)
+- **Ollama** running on port 11434
 
 ### Optional
 - **OpenClaw Gateway** on port 18789 — agent/executor features
@@ -155,9 +155,9 @@ Config file: `~/.config/cortexllm/config.json`
   },
   "router": {
     "reasoning_model": "qwen/qwen3.5",
-    "reasoning_host": "https://openrouter.ai/api/v1",
+    "reasoning_host": "http://127.0.0.1:11434",
     "worker_model": "deepseek/deepseek-chat",
-    "worker_host": "https://api.deepseek.com",
+    "worker_host": "http://127.0.0.1:11434",
     "reasoning_token_cap": 8192,
     "worker_token_cap": 4096
   },
@@ -169,8 +169,8 @@ Config file: `~/.config/cortexllm/config.json`
     },
     "opencode": {
       "enabled": true,
-      "mode": "cloud",
-      "endpoint": "https://openrouter.ai/api/v1"
+      "mode": "ollama",
+      "endpoint": "http://127.0.0.1:11434"
     }
   },
   "memory": {
@@ -204,11 +204,8 @@ Config file: `~/.config/cortexllm/config.json`
 ### Environment Variables
 ```bash
 export OPENCLAW_GATEWAY_TOKEN=your_token_here
-export OPENROUTER_API_KEY=your_openrouter_key_here   # for Qwen reasoning slot
-export DEEPSEEK_API_KEY=your_deepseek_key_here       # for DeepSeek worker slot
-export CORTEXLLM_CONFIG_PATH=~/.config/cortexllm/config.json
-# Local Ollama override (optional — replaces cloud defaults)
 export OLLAMA_HOST=127.0.0.1:11434
+export CORTEXLLM_CONFIG_PATH=~/.config/cortexllm/config.json
 ```
 
 ---
@@ -295,7 +292,7 @@ cortexllm/
 ### TUI Won't Start
 ```bash
 ~/.local/bin/cortexllm         # run binary directly to see error
-curl http://127.0.0.1:11434/api/tags   # check Ollama (if using local override)
+curl http://127.0.0.1:11434/api/tags   # check Ollama
 ls -la ~/.config/cortexllm/memory/    # check memory dir
 ```
 
@@ -319,7 +316,7 @@ df -h ~/.config
 
 - **Token Auth** — Gateway requires `GATEWAY_TOKEN` env variable
 - **Local Only** — All services bind to localhost/LAN by default
-- **No Cloud by Default** — Data stays on your machine; cloud models require explicit config
+- **No External APIs by Default** — All model requests go through local Ollama
 - **Atomic Writes** — Temp-file + rename on every memory update
 
 ---
