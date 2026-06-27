@@ -40,8 +40,8 @@ CortexLLM is a terminal-based AI control system that coordinates multiple AI age
 │                                                              │
 │   ┌──────────────────────────────────────────────────────┐  │
 │   │                   BRAIN (Orchestrator)                │  │
-│   │   Reasoning Slot          Worker Slot                 │  │
-│   │   (qwen/qwen3.5)          (deepseek/deepseek-chat)    │  │
+│   │   Reasoning Slot              Worker Slot             │  │
+│   │   (gpt-oss:20b-cloud)         (deepseek-v3.1:671b-cloud) │
 │   └────────────────────────┬─────────────────────────────┘  │
 │                            │                                 │
 │        ┌───────────────────┼───────────────────┐            │
@@ -79,14 +79,24 @@ CortexLLM is a terminal-based AI control system that coordinates multiple AI age
 
 ### Model Routing
 
-Each slot is configured independently in `config.json` or via environment variables:
+Both slots route through the **local Ollama daemon** (`http://127.0.0.1:11434`). The `-cloud` suffix tells Ollama to run the model on Ollama's cloud infrastructure rather than your local GPU — requires `ollama auth login` and an active Ollama Max subscription.
 
 ```
-Reasoning Slot → qwen/qwen3.5   (via Ollama)
-Worker Slot    → deepseek/deepseek-chat  (via Ollama)
+Reasoning Slot → gpt-oss:20b-cloud        (via local Ollama daemon → Ollama cloud)
+Worker Slot    → deepseek-v3.1:671b-cloud  (via local Ollama daemon → Ollama cloud)
 ```
 
-Both slots use the local Ollama instance at `http://127.0.0.1:11434` by default.
+To pull cloud models before first run:
+```bash
+ollama auth login
+ollama pull gpt-oss:20b-cloud
+ollama pull deepseek-v3.1:671b-cloud
+```
+
+To switch to a different cloud model, change the model name in `config.json`. Available cloud models:
+- `gpt-oss:20b-cloud`, `gpt-oss:120b-cloud`
+- `deepseek-v3.1:671b-cloud`
+- `qwen3-coder:480b-cloud`
 
 ---
 
@@ -135,6 +145,8 @@ cortexllm
 - **Go 1.24+** — TUI binary
 - **Python 3.10+** — Worker backend
 - **Ollama** running on port 11434
+- **Ollama Max subscription** — required for `-cloud` models
+- Sign in with `ollama auth login` before first use
 
 ### Optional
 - **OpenClaw Gateway** on port 18789 — agent/executor features
@@ -154,9 +166,9 @@ Config file: `~/.config/cortexllm/config.json`
     "version": "0.3.0"
   },
   "router": {
-    "reasoning_model": "qwen/qwen3.5",
+    "reasoning_model": "gpt-oss:20b-cloud",
     "reasoning_host": "http://127.0.0.1:11434",
-    "worker_model": "deepseek/deepseek-chat",
+    "worker_model": "deepseek-v3.1:671b-cloud",
     "worker_host": "http://127.0.0.1:11434",
     "reasoning_token_cap": 8192,
     "worker_token_cap": 4096
@@ -296,6 +308,13 @@ curl http://127.0.0.1:11434/api/tags   # check Ollama
 ls -la ~/.config/cortexllm/memory/    # check memory dir
 ```
 
+### Cloud Models Not Working
+```bash
+ollama auth login              # sign in to Ollama (requires Max subscription)
+ollama pull gpt-oss:20b-cloud  # pull the cloud model
+ollama list                    # verify it appears
+```
+
 ### OpenClaw Integration Fails
 ```bash
 curl http://127.0.0.1:18789/health
@@ -316,7 +335,7 @@ df -h ~/.config
 
 - **Token Auth** — Gateway requires `GATEWAY_TOKEN` env variable
 - **Local Only** — All services bind to localhost/LAN by default
-- **No External APIs by Default** — All model requests go through local Ollama
+- **No External API Keys** — All model requests go through local Ollama daemon; cloud compute is handled by Ollama's infrastructure using your subscription
 - **Atomic Writes** — Temp-file + rename on every memory update
 
 ---
