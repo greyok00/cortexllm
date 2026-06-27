@@ -17,14 +17,9 @@
     }
   },
   "model": {
-    "reasoning_model": "gpt-oss:20b-cloud",
-    "reasoning_host": "cloud",
-    "worker_model": "deepseek-flash",
-    "worker_host": "cloud",
-    "fallback": "ollama/llama3.1:8b",
-    "context_tokens": 262144,
-    "reasoning_token_cap": 32768,
-    "worker_token_cap": 16384
+    "reasoning": "qwen/qwen3.5",
+    "worker": "deepseek/deepseek-chat",
+    "fallback": "ollama/llama3.1:8b"
   },
   "memory": {
     "hot_limit": 50,
