@@ -17,7 +17,7 @@
     }
   },
   "model": {
-    "reasoning": "qwen3.5:cloud",
+    "reasoning": "deepseek/deepseek-chat",
     "worker": "deepseek/deepseek-chat",
     "fallback": "ollama/llama3.1:8b"
   },

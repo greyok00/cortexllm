@@ -86,7 +86,7 @@ Reasoning Slot → reasoning_model + reasoning_host
 Worker Slot    → worker_model + worker_host
 ```
 
-Defaults: both slots cloud-hosted. Override either to a local Ollama instance without touching the other.
+Default for both slots: `deepseek/deepseek-chat` (cloud). Override either to a local Ollama instance without touching the other.
 
 ---
 
@@ -154,10 +154,10 @@ Config file: `~/.config/cortexllm/config.json`
     "version": "0.3.0"
   },
   "router": {
-    "reasoning_model": "qwen3.5:cloud",
-    "reasoning_host": "http://127.0.0.1:11434",
-    "worker_model": "deepseek-r1:7b",
-    "worker_host": "http://127.0.0.1:11434",
+    "reasoning_model": "deepseek/deepseek-chat",
+    "reasoning_host": "https://api.deepseek.com",
+    "worker_model": "deepseek/deepseek-chat",
+    "worker_host": "https://api.deepseek.com",
     "reasoning_token_cap": 8192,
     "worker_token_cap": 4096
   },
@@ -169,8 +169,8 @@ Config file: `~/.config/cortexllm/config.json`
     },
     "opencode": {
       "enabled": true,
-      "mode": "ollama",
-      "endpoint": "http://127.0.0.1:11434"
+      "mode": "cloud",
+      "endpoint": "https://api.deepseek.com"
     }
   },
   "memory": {
@@ -204,7 +204,9 @@ Config file: `~/.config/cortexllm/config.json`
 ### Environment Variables
 ```bash
 export OPENCLAW_GATEWAY_TOKEN=your_token_here
+export DEEPSEEK_API_KEY=your_deepseek_key_here
 export CORTEXLLM_CONFIG_PATH=~/.config/cortexllm/config.json
+# Local Ollama override (optional — replaces cloud default)
 export OLLAMA_HOST=127.0.0.1:11434
 ```
 
@@ -292,7 +294,7 @@ cortexllm/
 ### TUI Won't Start
 ```bash
 ~/.local/bin/cortexllm         # run binary directly to see error
-curl http://127.0.0.1:11434/api/tags   # check Ollama
+curl http://127.0.0.1:11434/api/tags   # check Ollama (if using local)
 ls -la ~/.config/cortexllm/memory/    # check memory dir
 ```
 
