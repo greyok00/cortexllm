@@ -11,7 +11,7 @@
 CortexLLM is a terminal-based AI control system that coordinates multiple AI agents under a central Brain, routes tasks to the right model at the right cost, and keeps everything it learns across sessions. Instead of starting from scratch every time, it maintains hot/warm/cold memory tiers so context is always available. Instead of using one model for everything, it routes heavy reasoning to a capable model and high-volume work to a cheaper, faster worker — configurable per task.
 
 <p align="center">
-  <img src="https://user-gen-media-assets.s3.amazonaws.com/gemini_images/43722e13-a10e-450d-8397-69405c4d712e.png" alt="CortexLLM Architecture" width="480">
+  <img src="https://user-gen-media-assets.s3.amazonaws.com/gemini_images/b01d87cc-4260-4143-be9e-766ad90a727d.png" alt="CortexLLM Architecture" width="480">
 </p>
 
 > ⚠️ **Active Development — v0.3.0.** Core memory system and worker routing are functional. TUI improvements are ongoing. See [ROADMAP.md](ROADMAP.md) for what's planned.
@@ -45,7 +45,7 @@ CortexLLM is a terminal-based AI control system that coordinates multiple AI age
 │   ┌──────────────────────────────────────────────────────┐  │
 │   │                   BRAIN (Orchestrator)                │  │
 │   │   Reasoning Slot              Worker Slot             │  │
-│   │   (gpt-oss:20b-cloud)         (deepseek-v3.1:671b-cloud) │
+│   │   (gpt-oss:20b-cloud)         (deepseek-v4-flash:cloud) │
 │   └────────────────────────┬─────────────────────────────┘  │
 │                            │                                 │
 │        ┌───────────────────┼───────────────────┐            │
@@ -83,23 +83,23 @@ CortexLLM is a terminal-based AI control system that coordinates multiple AI age
 
 ### Model Routing
 
-Both slots route through the **local Ollama daemon** (`http://127.0.0.1:11434`). The `-cloud` suffix tells Ollama to run the model on Ollama's cloud infrastructure rather than your local GPU — requires `ollama auth login` and an active Ollama Max subscription.
+Both slots route through the **local Ollama daemon** (`http://127.0.0.1:11434`). The `:cloud` suffix tells Ollama to run the model on Ollama's cloud infrastructure rather than your local GPU — requires `ollama auth login` and an active Ollama Max subscription.
 
 ```
 Reasoning Slot → gpt-oss:20b-cloud        (via local Ollama daemon → Ollama cloud)
-Worker Slot    → deepseek-v3.1:671b-cloud  (via local Ollama daemon → Ollama cloud)
+Worker Slot    → deepseek-v4-flash:cloud   (via local Ollama daemon → Ollama cloud)
 ```
 
 To pull cloud models before first run:
 ```bash
 ollama auth login
 ollama pull gpt-oss:20b-cloud
-ollama pull deepseek-v3.1:671b-cloud
+ollama pull deepseek-v4-flash:cloud
 ```
 
-To switch to a different cloud model, change the model name in `config.json`. Available cloud models:
+To switch to a different cloud model, change `worker_model` in `config.json`. Available cloud models:
 - `gpt-oss:20b-cloud`, `gpt-oss:120b-cloud`
-- `deepseek-v3.1:671b-cloud`
+- `deepseek-v4-flash:cloud`
 - `qwen3-coder:480b-cloud`
 
 ---
@@ -108,8 +108,8 @@ To switch to a different cloud model, change the model name in `config.json`. Av
 
 | Tier | Location | Default Limit | Purpose |
 |------|----------|---------------|---------|
-| **HOT** | `~/.config/cortexllm/memory/hot/` | 50 msgs | Active session context, flushed to disk atomically |
-| **WARM** | `~/.config/cortexllm/memory/warm/` | Dynamic (scales with number of active models) | Recent cross-session context; 70/30 split keeps buffer for all platforms |
+| **HOT** | `~/.config/cortexllm/memory/hot/` | 200 msgs | Active session context, flushed to disk atomically |
+| **WARM** | `~/.config/cortexllm/memory/warm/` | 500 msgs (scales with active models) | Recent cross-session context; 70/30 split keeps buffer for all platforms |
 | **COLD** | `~/.config/cortexllm/memory/cold/` | Unlimited | Permanent knowledge vault — facts, workflows, decisions, lessons |
 
 **Warm memory scales automatically.** With 2 models it splits 70/30 (each gets 30% guaranteed buffer); with 3 it becomes roughly 70/10/10/10; the system auto-adjusts the per-model buffer floor as you add or remove workers.
@@ -149,7 +149,7 @@ cortexllm
 - **Go 1.24+** — TUI binary
 - **Python 3.10+** — Worker backend
 - **Ollama** running on port 11434
-- **Ollama Max subscription** — required for `-cloud` models
+- **Ollama Max subscription** — required for `:cloud` models
 - Sign in with `ollama auth login` before first use
 
 ### Optional
@@ -169,13 +169,15 @@ Config file: `~/.config/cortexllm/config.json`
     "name": "CortexLLM",
     "version": "0.3.0"
   },
-  "router": {
+  "model": {
     "reasoning_model": "gpt-oss:20b-cloud",
-    "reasoning_host": "http://127.0.0.1:11434",
-    "worker_model": "deepseek-v3.1:671b-cloud",
-    "worker_host": "http://127.0.0.1:11434",
-    "reasoning_token_cap": 8192,
-    "worker_token_cap": 4096
+    "reasoning_host": "cloud",
+    "worker_model": "deepseek-v4-flash:cloud",
+    "worker_host": "cloud",
+    "fallback": "ollama/llama3.1:8b",
+    "context_tokens": 262144,
+    "reasoning_token_cap": 32768,
+    "worker_token_cap": 16384
   },
   "platforms": {
     "openclaw": {
@@ -191,11 +193,9 @@ Config file: `~/.config/cortexllm/config.json`
   },
   "memory": {
     "path": "~/.config/cortexllm/memory",
-    "hot_limit": 50,
-    "warm_buffer_pct": 30,
-    "auto_rotate": true,
-    "auto_compact": true,
-    "write_interval": 2
+    "hot_limit": 200,
+    "warm_limit": 500,
+    "auto_rotate": true
   },
   "gateway": {
     "port": 18789,
@@ -315,8 +315,9 @@ ls -la ~/.config/cortexllm/memory/    # check memory dir
 ### Cloud Models Not Working
 ```bash
 ollama auth login              # sign in to Ollama (requires Max subscription)
-ollama pull gpt-oss:20b-cloud  # pull the cloud model
-ollama list                    # verify it appears
+ollama pull gpt-oss:20b-cloud  # pull reasoning model
+ollama pull deepseek-v4-flash:cloud  # pull worker model
+ollama list                    # verify they appear
 ```
 
 ### OpenClaw Integration Fails
