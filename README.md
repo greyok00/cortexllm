@@ -12,7 +12,7 @@ CortexLLM is a fast local AI control system built for task execution and continu
 
 ![Mission Control Overview](./docs/images/mission-control-overview.png)
 
-CortexLLM is a high-performance, terminal-based AI orchestration system (Version 1.0.0) designed to unify reasoning, automation, and long-term memory into a single mission control center
+CortexLLM is a high-performance, terminal-based AI orchestration system (Version 0.1.0) designed to unify reasoning, automation, and long-term memory into a single mission control center
 . Built on the principle of no redundancy, it coordinates specialized "workers"—OpenCode for strategic planning and OpenClaw for tactical execution—under a central Brain to ensure a seamless, persistent work loop
 .
 1. The Core Architecture: Worker-Based Orchestration
@@ -140,7 +140,7 @@ cortexllm tasks list
 {
   "system": {
     "name": "CortexLLM",
-    "version": "1.0.0"
+    "version": "0.1.0"
   },
   "platforms": {
     "openclaw": {
