@@ -12,12 +12,12 @@
     },
     "opencode": {
       "enabled": true,
-      "mode": "ollama",
-      "endpoint": "http://127.0.0.1:11434"
+      "mode": "cloud",
+      "endpoint": "https://openrouter.ai/api/v1"
     }
   },
   "model": {
-    "reasoning": "deepseek/deepseek-chat",
+    "reasoning": "qwen/qwen3-235b-a22b",
     "worker": "deepseek/deepseek-chat",
     "fallback": "ollama/llama3.1:8b"
   },
