@@ -27,8 +27,8 @@
     "worker_token_cap": 16384
   },
   "memory": {
-    "hot_limit": 50,
-    "warm_limit": 20,
+    "hot_limit": 200,
+    "warm_limit": 500,
     "auto_rotate": true,
     "path": "~/.config/cortexllm/memory"
   },

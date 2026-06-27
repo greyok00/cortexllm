@@ -3,8 +3,11 @@ import json
 from pathlib import Path
 from typing import Any, Optional, Dict
 
+HOT_LIMIT = 200
+WARM_LIMIT = 500
+
 class Memory:
-    """Atomic file persistence"""
+    """Atomic file persistence with enforced hot/warm caps"""
 
     def __init__(self, path=None):
         self.root = path or Path.home() / ".config" / "cortexllm"
@@ -15,6 +18,11 @@ class Memory:
         return self.root / f"{name}.json"
 
     def write(self, key, data):
+        """Write data atomically. Enforces message cap for hot/warm keys."""
+        if key in ("hot", "session") and isinstance(data, list) and len(data) > HOT_LIMIT:
+            data = data[-HOT_LIMIT:]
+        elif key == "warm" and isinstance(data, list) and len(data) > WARM_LIMIT:
+            data = data[-WARM_LIMIT:]
         self._cache[key] = data
         tmp = self._file(f"{key}.tmp")
         tmp.write_text(json.dumps(data, indent=2))
@@ -25,7 +33,7 @@ class Memory:
             return self._cache[key]
         try:
             return json.loads(self._file(key).read_text())
-        except (FileNotFoundError, json.JSONDecodeError) as e:
+        except (FileNotFoundError, json.JSONDecodeError):
             return None
 
     def session(self, data=None):
