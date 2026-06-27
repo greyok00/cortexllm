@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cortexllm"
-version = "0.2.0"
+version = "0.3.0"
 description = "Unified AI Control for Your Terminal - TUI for managing AI conversations with persistent memory and agent orchestration"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,7 +12,7 @@ license = { text = "MIT" }
 authors = [
     { name = "greyok00", email = "greyok00@users.noreply.github.com" }
 ]
-keywords = ["ai", "tui", "terminal", "ollama", "llm", "chat", "memory"]
+keywords = ["ai", "tui", "terminal", "ollama", "llm", "chat", "memory", "multi-agent", "orchestration"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
@@ -36,6 +36,3 @@ dev = ["pytest", "black", "flake8", "pytest-asyncio"]
 Homepage = "https://github.com/greyok00/cortexllm"
 Repository = "https://github.com/greyok00/cortexllm.git"
 Issues = "https://github.com/greyok00/cortexllm/issues"
-
-[tool.setuptools.packages.find]
-include = ["cortexllm*"]
