@@ -1,7 +1,7 @@
 {
   "system": {
     "name": "CortexLLM",
-    "version": "2.0.0"
+    "version": "0.3.0"
   },
   "platforms": {
     "openclaw": {
@@ -17,7 +17,8 @@
     }
   },
   "model": {
-    "primary": "ollama/qwen3.5:cloud",
+    "reasoning": "qwen3.5:cloud",
+    "worker": "deepseek/deepseek-chat",
     "fallback": "ollama/llama3.1:8b"
   },
   "memory": {
