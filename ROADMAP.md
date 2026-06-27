@@ -55,7 +55,7 @@ Focus: make the Brain's model routing explicit, configurable, and testable.
 ### Downstepping
 - [ ] Route all tasks flagged `task_type=reasoning` to the reasoning slot
 - [ ] Route all tasks flagged `task_type=worker` to the worker slot (cheaper/faster model)
-- [ ] Default routing policy: reasoning slot = cloud gpt-oss, worker slot = DeepSeek Flash; both cloud by default, overridable by config or env
+- [ ] Default routing policy: reasoning slot = `gpt-oss:20b-cloud`, worker slot = `deepseek-v3.1:671b-cloud`; both via local Ollama daemon
 - [ ] Expose `--reasoning-model` and `--worker-model` CLI flags for quick override without editing config
 
 ### Multi-Agent
@@ -74,7 +74,45 @@ Focus: make the Brain's model routing explicit, configurable, and testable.
 
 ---
 
-## Milestone 0.5.0 — DOM Pruning & Browser Worker
+## Milestone 0.5.0 — Cloud Router, Scheduled Workers & Memory Export
+
+Focus: first-class support for non-Ollama cloud providers, automation via scheduled workers, and human-readable memory exports.
+
+### Cloud API Router
+- [ ] Add `provider` field to each router slot config: `"ollama"` (default), `"openai"`, `"anthropic"`, `"gemini"`
+- [ ] Each provider gets its own adapter that normalizes the request/response shape to the internal `ModelResponse` interface
+- [ ] `OllamaAdapter` — existing local-daemon path (`http://127.0.0.1:11434`); supports `-cloud` suffixed model names
+- [ ] `OpenAIAdapter` — reads `OPENAI_API_KEY` env var; targets `https://api.openai.com/v1/chat/completions`
+- [ ] `AnthropicAdapter` — reads `ANTHROPIC_API_KEY`; targets `https://api.anthropic.com/v1/messages`
+- [ ] `GeminiAdapter` — reads `GEMINI_API_KEY`; targets `https://generativelanguage.googleapis.com/v1beta/`
+- [ ] If provider API key env var is unset, log a clear error and refuse to start that slot (no silent fallback)
+- [ ] Add provider + model to worker status output so it's always visible which backend is active
+- [ ] Update `config.json` schema: `router.reasoning_provider`, `router.worker_provider` fields
+- [ ] Document all four providers in README with example config snippets
+
+### Scheduled / Cron Workers
+- [ ] Add `schedule` field to worker config: accepts cron expression (`"0 */6 * * *"`) or interval shorthand (`"6h"`, `"30m"`)
+- [ ] Implement `SchedulerService` that parses schedule fields on startup and registers cron jobs
+- [ ] Each scheduled job spawns a named worker with a pre-defined task payload from config
+- [ ] Scheduled workers run headlessly — output goes to a dedicated log file and optionally to HOT memory
+- [ ] Skip execution if a previous run of the same worker is still active (no overlapping runs)
+- [ ] Add `cortexllm schedule list` CLI command to show all registered jobs and their next run time
+- [ ] Add `cortexllm schedule run <name>` to trigger a scheduled worker immediately on demand
+- [ ] Add `scheduler_enabled: true/false` top-level config flag
+
+### Memory Export
+- [ ] Add `cortexllm memory export` CLI command
+- [ ] `--format md` (default) — renders cold vault as a structured Markdown document grouped by `record_type`
+- [ ] `--format pdf` — converts the Markdown export to PDF via `weasyprint` or `pandoc` (auto-detected at runtime)
+- [ ] `--filter <tag>` — export only records matching a given tag
+- [ ] `--since <date>` — export only records created or updated after a given date (ISO 8601)
+- [ ] Output file defaults to `~/cortexllm-memory-export-<timestamp>.md` unless `--output` is specified
+- [ ] Export includes a header with export timestamp, total record count, and active model slots
+- [ ] Each exported record includes: entity, record_type, summary, detail, tags, confidence, last_seen_at
+
+---
+
+## Milestone 0.6.0 — DOM Pruning & Browser Worker
 
 Focus: reduce token waste and noise from browser/scraper workers.
 
@@ -97,7 +135,7 @@ Focus: reduce token waste and noise from browser/scraper workers.
 
 ---
 
-## Milestone 0.6.0 — Background Promoter (Dreamer)
+## Milestone 0.7.0 — Background Promoter (Dreamer)
 
 Focus: make the cold vault useful by automatically promoting durable knowledge from warm memory.
 
@@ -124,9 +162,9 @@ Focus: make the cold vault useful by automatically promoting durable knowledge f
 
 ---
 
-## Milestone 0.7.0 — TUI Polish
+## Milestone 0.8.0 — TUI Polish
 
-Focus: incremental TUI improvements that do not require a full rewrite. Heavy TUI changes (tabbed layout, Workers Dashboard, thinking display) are deferred to 0.8.0.
+Focus: incremental TUI improvements that do not require a full rewrite. Heavy TUI changes (tabbed layout, Workers Dashboard, thinking display) are deferred to 0.9.0.
 
 ### Performance
 - [ ] Replace `exec.Command("curl", ...)` in `main.go` health checks with a shared `http.Client`
@@ -145,9 +183,9 @@ Focus: incremental TUI improvements that do not require a full rewrite. Heavy TU
 
 ---
 
-## Milestone 0.8.0 — TUI Overhaul (Tabbed Multi-Worker Layout)
+## Milestone 0.9.0 — TUI Overhaul (Tabbed Multi-Worker Layout)
 
-Focus: full tabbed layout, Workers Dashboard, and thinking display. This is the large TUI change deferred from 0.7.0.
+Focus: full tabbed layout, Workers Dashboard, and thinking display. This is the large TUI change deferred from 0.8.0.
 
 ### Primary Views
 - [ ] **Chat view** — main interaction pane, full message history, per-model color coding
@@ -174,7 +212,7 @@ Focus: full tabbed layout, Workers Dashboard, and thinking display. This is the 
 
 ---
 
-## Milestone 0.9.0 — Android / Termux Distribution
+## Milestone 1.0.0 — Android / Termux Distribution
 
 Focus: make CortexLLM usable on Android without requiring a desktop environment.
 
@@ -202,9 +240,6 @@ These items are noted but not yet assigned to a milestone.
 - **Web UI** — optional browser-based dashboard for non-terminal users
 - **Structured task queue with priorities** — replace current FIFO queue with a priority queue
 - **Plugin system** — allow external workers to register themselves via a socket or named pipe
-- **OpenAI / Anthropic / Gemini cloud router** — first-class support for cloud API providers alongside Ollama
-- **Scheduled/cron workers** — workers that fire on a schedule rather than on user input
-- **Export memory to Markdown/PDF** — dump cold vault to a human-readable document
 
 ---
 
