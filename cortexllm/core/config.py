@@ -27,8 +27,13 @@ DEFAULT_CONFIG = {
         "base_url": "http://127.0.0.1:8888"
     },
     "model": {
-        "primary": "ollama/qwen3.5:cloud",
-        "context_tokens": 262144
+        "reasoning_model": "gpt-oss:20b-cloud",
+        "reasoning_host": "cloud",
+        "worker_model": "deepseek-flash",
+        "worker_host": "cloud",
+        "context_tokens": 262144,
+        "reasoning_token_cap": 32768,
+        "worker_token_cap": 16384
     },
     "gateway": {
         "port": 18789,
@@ -38,23 +43,25 @@ DEFAULT_CONFIG = {
 
 class Config:
     """Configuration handler"""
-    
+
     def __init__(self, path=None):
         self.path = path or Path.home() / ".config" / "cortexllm" / "config.json"
         self._data = {}
         self.load()
-    
+
     def load(self):
         try:
             self._data = json.loads(self.path.read_text())
         except FileNotFoundError:
             self._data = DEFAULT_CONFIG.copy()
             self.save()
-    
+
     def save(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(self._data, indent=2))
-    
+        tmp = self.path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(self._data, indent=2))
+        tmp.replace(self.path)
+
     def get(self, *path, default=None):
         d = self._data
         for k in path:
@@ -63,7 +70,7 @@ class Config:
             else:
                 return default
         return d
-    
+
     def set(self, *path, value=None):
         d = self._data
         for k in path[:-1]:
@@ -72,15 +79,15 @@ class Config:
             d = d[k]
         d[path[-1]] = value
         self.save()
-    
+
     @property
     def cdp_url(self):
         return self.get("browser", "cdp_url", default="http://127.0.0.1:9222")
-    
+
     @property
     def searxng_url(self):
         return self.get("search", "base_url", default="http://127.0.0.1:8888")
-    
+
     @property
     def gateway_port(self):
         return self.get("gateway", "port", default=18789)
