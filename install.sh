@@ -38,24 +38,29 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Build Go TUI
 echo "Building Go TUI..."
 cd "$SCRIPT_DIR"
-go build -o "$BIN_DIR/cortexllm" ./main.go 2>/dev/null || {
-    echo "  Note: Go build skipped (binary may already exist)"
-}
+if [ ! -f "$BIN_DIR/cortexllm" ]; then
+    go build -o "$BIN_DIR/cortexllm" ./main.go
+else
+    echo "  Binary already exists, rebuilding..."
+    go build -o "$BIN_DIR/cortexllm" ./main.go
+fi
 echo "✓ TUI built as 'cortexllm'"
 
 # Install Python package
 echo "Installing Python CortexLLM..."
-pip3 install -e . --quiet 2>/dev/null || python3 setup.py install --quiet 2>/dev/null || echo "  Note: Python install skipped"
+pip3 install -e . --quiet 2>/dev/null || echo "  Note: pip install failed - ensure pip3 is available"
 echo "✓ Python package installed"
 
 # Install proxy
 if [ -f "$SCRIPT_DIR/proxy/main.go" ]; then
-    go build -o "$BIN_DIR/cortex-proxy" "$SCRIPT_DIR/proxy/main.go" 2>/dev/null || echo "  Note: Proxy build skipped"
+    go build -o "$BIN_DIR/cortex-proxy" "$SCRIPT_DIR/proxy/main.go" || echo "  Warning: proxy build failed"
     echo "✓ Proxy built as 'cortex-proxy'"
 fi
 
 # Install message injector
-cat > "$BIN_DIR/cortex-inject" << 'INJECTEOF'
+# NOTE: Variables like $BIN_DIR, $INSTALL_DIR, $CONFIG_DIR are intentionally
+# expanded here (no single-quotes on heredoc delimiter).
+cat > "$BIN_DIR/cortex-inject" << INJECTEOF
 #!/usr/bin/env python3
 """Inject message into OpenClaw and/or OpenCode sessions"""
 import sys
@@ -64,8 +69,20 @@ import urllib.request
 import urllib.error
 import os
 
-# Use installed package path
-sys.path.insert(0, os.path.expanduser('~/.local/share/cortexllm'))
+# Resolve install path from env or installer default
+INSTALL_PATH = os.environ.get("CORTEXLLM_DATA_DIR", "$INSTALL_DIR")
+CONFIG_PATH  = os.environ.get("CORTEXLLM_CONFIG_DIR", "$CONFIG_DIR")
+
+sys.path.insert(0, INSTALL_PATH)
+
+def _get_config():
+    """Load config.json so model/endpoint are never hardcoded."""
+    import json, pathlib
+    cfg_file = pathlib.Path(CONFIG_PATH) / "config.json"
+    if cfg_file.exists():
+        with open(cfg_file) as f:
+            return json.load(f)
+    return {}
 
 def inject_openclaw(message):
     from cortexllm import Brain, Memory, Config
@@ -76,18 +93,24 @@ def inject_openclaw(message):
     return f"OpenClaw: {task.id}"
 
 def inject_opencode(message):
+    cfg = _get_config()
     try:
+        opencode_cfg = cfg.get("platforms", {}).get("opencode", {})
+        model   = opencode_cfg.get("model", "qwen3.5:cloud")
+        host    = opencode_cfg.get("host", "http://127.0.0.1:11434")
+        endpoint = f"{host.rstrip('/')}/api/chat"
+
         payload = {
-            "model": "qwen3.5:cloud",
+            "model": model,
             "messages": [{"role": "user", "content": message}],
             "stream": False
         }
         req = urllib.request.Request(
-            "http://127.0.0.1:11434/api/chat",
-            data=json.dumps(payload).encode('utf-8'),
-            headers={'Content-Type': 'application/json'}
+            endpoint,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
         )
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=30):
             return "OpenCode: message sent"
     except Exception as e:
         return f"OpenCode failed: {e}"
@@ -96,22 +119,22 @@ def main():
     if len(sys.argv) < 2:
         print("Usage: cortex-inject [--opencode|--openclaw|--both] <message>")
         sys.exit(1)
-    
+
     args = sys.argv[1:]
     target = "openclaw"
     message_args = []
-    
+
     for arg in args:
         if arg in ["--opencode", "--openclaw", "--both"]:
             target = arg[2:]
         else:
             message_args.append(arg)
-    
-    message = ' '.join(message_args)
+
+    message = " ".join(message_args)
     if not message:
         print("Error: message required")
         sys.exit(1)
-    
+
     if target == "opencode":
         print(inject_opencode(message))
     elif target == "openclaw":
@@ -120,23 +143,24 @@ def main():
         print(inject_openclaw(message))
         print(inject_opencode(message))
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
 INJECTEOF
 chmod +x "$BIN_DIR/cortex-inject"
 echo "✓ Message injector installed"
 
 # Create default config
+# NOTE: Variables below are intentionally expanded (no single-quotes on delimiter).
 if [ ! -f "$CONFIG_DIR/config.json" ]; then
-    cat > "$CONFIG_DIR/config.json" << 'CONFIGEOF'
+    cat > "$CONFIG_DIR/config.json" << CONFIGEOF
 {
   "system": {
     "name": "CortexLLM",
-    "version": "2026.6.25",
+    "version": "0.2.0",
     "unified": true
   },
   "memory": {
-    "path": "~/.config/cortexllm",
+    "path": "$CONFIG_DIR",
     "write_interval": 2,
     "hot_limit": 50,
     "auto_rotate": true,
@@ -146,6 +170,7 @@ if [ ! -f "$CONFIG_DIR/config.json" ]; then
     "opencode": {
       "enabled": true,
       "model": "qwen3.5:cloud",
+      "host": "http://127.0.0.1:11434",
       "provider": "ollama",
       "color": "#00D4AA",
       "emoji": "◆"
@@ -153,6 +178,7 @@ if [ ! -f "$CONFIG_DIR/config.json" ]; then
     "openclaw": {
       "enabled": true,
       "model": "qwen3.5:cloud",
+      "host": "http://127.0.0.1:11434",
       "provider": "ollama",
       "color": "#FF6B6B",
       "emoji": "◇"
@@ -185,7 +211,7 @@ if [ ! -f "$CONFIG_DIR/config.json" ]; then
     "bind": "lan"
   },
   "userStyle": {
-    "path": "~/.config/cortexllm/USER_STYLE.md",
+    "path": "$CONFIG_DIR/USER_STYLE.md",
     "enforce": true
   }
 }

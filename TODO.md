@@ -1,9 +1,11 @@
 # CORTEXLLM PROJECT TODO LIST
-## Version: 1.1.0 - Production Ready
+## Version: 0.2.0 - In Development
+
+> ⚠️ **Status: Active Development** — core memory and TUI are functional; several items below are not yet complete. Do not treat this as production-ready until the 0.2.0 checklist is fully satisfied.
 
 ---
 
-## ✅ COMPLETED (v1.1.0 - 2026-06-24)
+## ✅ COMPLETED
 
 ### Memory Persistence
 - [x] Atomic writes (temp file + rename) in Go TUI
@@ -33,7 +35,8 @@
 - [x] Input handling (space, backspace, enter)
 
 ### Python API
-- [x] Brain class (task submission)
+- [x] Brain class (task submission + lifecycle via `start()`/`stop()`)
+- [x] Brain task queue drain (`_drain_queue` loop)
 - [x] Memory class (atomic persistence)
 - [x] Config class (unified config)
 - [x] Worker system (research, code, write, general)
@@ -42,48 +45,46 @@
 ### Configuration
 - [x] Unified config at `~/.config/cortexllm/config.json`
 - [x] Auto-create directories on startup
-- [x] Default config generation
+- [x] Default config generation (paths expand correctly via install.sh)
 - [x] Browser CDP integration
 - [x] Searxng search integration
 - [x] OpenClaw gateway support
 
-### Documentation
-- [x] AGENTS.md (main docs)
-- [x] INSTALL.md (installation guide)
-- [x] WALKTHROUGH.md (feature tour)
-- [x] ARCHITECTURE.md (system design)
-- [x] GREYOK_STYLE_GUIDE.md (visual design)
-- [x] Updated TODO.md (this file)
-
 ### Build & Deploy
 - [x] Go 1.24.2 compatibility
 - [x] go.mod with all dependencies
-- [x] install.sh script
-- [x] Binary: cortexllm (~5MB)
-- [x] Binary: cortex-proxy (~9MB)
-- [x] Installation to `~/.local/bin/`
+- [x] install.sh script (heredoc variable expansion fixed)
+- [x] Proxy build errors surface correctly (not swallowed)
+- [x] Python installer uses pip3 only (setup.py fallback removed)
 
 ---
 
-## ⚠️ NOT IMPLEMENTED (Future)
+## 🔴 OPEN — Must Close Before 0.2.0 Tag
 
-### Memory Management
-- [ ] Auto-rotation at 50 messages
-- [ ] Token counting (8k limit)
-- [ ] Cold storage archiving
-- [ ] Session summaries
-- [ ] Warm memory sync (unified.json)
+### Critical
+- [ ] Remove compiled binary `cortexllm/main` from Python package directory (breaks pip on non-matching arch; add to .gitignore and document manual build step)
+- [ ] Fix README install URL — points to `scripts/install.sh` but file is in repo root (`install.sh`)
+- [ ] Fix README build-from-source `cd cortexllm` — `main.go` is in repo root, not inside the Python package folder
+
+### Memory System
+- [ ] Enforce single canonical schema for cold/warm/hot (cold archives wrap in `{Messages:[]}` dict; warm is a flat list — must align)
+- [ ] Replace bare `except: pass` in `memory-tools.py` `append_message()` with `except (FileNotFoundError, json.JSONDecodeError)`
+- [ ] Auto-rotation at 50 messages (hot tier)
+- [ ] Token counting (8k limit enforcement)
+- [ ] Session summaries before cold archive
+- [ ] Warm memory sync (unified.json) finalized
 
 ### Advanced Features
 - [ ] Multi-step task planning
-- [ ] Worker auto-selection
 - [ ] Background/foreground task modes
 - [ ] Task approval workflow
 - [ ] Cross-platform session merge
+- [ ] Configurable downstepping: reasoning model slot vs. worker model slot
+- [ ] DOM pruning helper (`prune_dom_to_semantic_markdown`) for browser workers
 
 ### Testing
 - [ ] Unit tests for Go TUI
-- [ ] Integration tests
+- [ ] Async integration tests for Brain start/stop/queue drain
 - [ ] Performance benchmarks
 - [ ] Memory leak detection
 
@@ -93,61 +94,43 @@
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| Go TUI | ✅ Production | Persistence working |
-| Python API | ✅ Production | Atomic writes |
-| Proxy | ✅ Production | Message injection |
-| Memory System | ✅ Production | Hot tier only |
-| Documentation | ✅ Complete | All files updated |
-| Installation | ✅ Complete | install.sh works |
+| Go TUI | ✅ Functional | Persistence working |
+| Python API | ⚠️ In Progress | `start()`/`stop()`/queue drain fixed; needs test coverage |
+| Proxy | ✅ Functional | Message injection works |
+| Memory System | ⚠️ In Progress | Hot tier functional; cold/warm schema drift open |
+| Documentation | ⚠️ In Progress | README install URLs need fixing |
+| Installation | ⚠️ In Progress | Heredoc quoting fixed; binary-in-package issue open |
 
 ---
 
-## DIRECTORY STRUCTURE (Final)
+## DIRECTORY STRUCTURE
 
 ```
-~/.openclaw/cortexllm/           ← Source code
-├── go-tui/main.go               ← Go TUI (2042 lines)
+<repo root>/
+├── main.go                      ← Go TUI source (build from here)
 ├── proxy/main.go                ← Message proxy
-├── core/
-│   ├── brain.py                 ← Task orchestration
-│   ├── memory.py                ← Atomic persistence
-│   ├── config.py                ← Config handler
-│   └── orchestrator.py          ← Worker routing
-├── workers/__init__.py          ← Worker definitions
-├── cli/unified.py               ← CLI tools
-├── __init__.py                  ← Python exports
-├── go.mod                       ← Go dependencies
-├── cortexllm                    ← Built binary
-├── cortex-proxy                 ← Proxy binary
-├── install.sh                   ← Installer
+├── install.sh                   ← Installer (run from repo root)
+├── cortexllm/                   ← Python package
+│   ├── core/
+│   │   ├── brain.py             ← Task orchestration + queue drain
+│   │   ├── memory.py            ← Atomic persistence
+│   │   ├── config.py            ← Config handler
+│   │   └── orchestrator.py      ← Worker routing (consolidation with brain.py pending)
+│   ├── workers/__init__.py      ← Worker definitions
+│   ├── cli/unified.py           ← CLI tools
+│   └── __init__.py              ← Python exports
+├── memory-tools.py              ← Standalone memory CLI
+├── watch.py                     ← Real-time monitor
+├── go.mod / go.sum              ← Go dependencies
+├── pyproject.toml               ← Python package config
 └── *.md                         ← Documentation
 
 ~/.config/cortexllm/             ← Runtime data
-├── config.json                  ← Configuration
-├── session.json                 ← Session state
-├── tasks.json                   ← Task history
-├── AGENTS.md                    ← Docs copy
+├── config.json
+├── session.json
+├── tasks.json
 └── memory/
-    ├── hot/                     ← Active sessions
-    ├── warm/                    ← Shared context
-    └── cold/                    ← Archives (empty)
+    ├── hot/
+    ├── warm/
+    └── cold/
 ```
-
----
-
-## PRODUCTION CHECKLIST
-
-- [x] All paths use `~/.config/cortexllm/`
-- [x] Persistence implemented and tested
-- [x] Documentation updated
-- [x] Binaries built and installed
-- [x] Python API exports working
-- [x] Go TUI saves on quit + every 2s
-- [x] No `ai-unified` references remaining (verified 2026-06-24)
-
----
-
-**STATUS: PRODUCTION READY** ✅
-
-CortexLLM v1.1.0 is ready for deployment.
-Memory persistence is fully functional.
