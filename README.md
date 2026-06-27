@@ -10,6 +10,10 @@
 
 CortexLLM is a terminal-based AI control system that coordinates multiple AI agents under a central Brain, routes tasks to the right model at the right cost, and keeps everything it learns across sessions. Instead of starting from scratch every time, it maintains hot/warm/cold memory tiers so context is always available. Instead of using one model for everything, it routes heavy reasoning to a capable model and high-volume work to a cheaper, faster worker — configurable per task.
 
+<p align="center">
+  <img src="https://user-gen-media-assets.s3.amazonaws.com/gemini_images/43722e13-a10e-450d-8397-69405c4d712e.png" alt="CortexLLM Architecture" width="480">
+</p>
+
 > ⚠️ **Active Development — v0.3.0.** Core memory system and worker routing are functional. TUI improvements are ongoing. See [ROADMAP.md](ROADMAP.md) for what's planned.
 
 ---
