@@ -1,437 +1,176 @@
 # CortexLLM
 
-**Local-first AI orchestration. Persistent memory. Multi-agent task routing. Terminal-native.**
+> Universal Memory System for AI Agents
 
-[![Version](https://img.shields.io/badge/version-0.2.0-brightgreen)](https://github.com/greyok00/cortexllm/releases)
-[![Go Build](https://img.shields.io/badge/go-1.24+-00ADD8?logo=go)](https://go.dev)
-[![Python](https://img.shields.io/badge/python-3.10+-3776AB?logo=python)](https://python.org)
+[![Version](https://img.shields.io/badge/version-2026.6.29-blue)](https://github.com/yourusername/cortexllm)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Status](https://img.shields.io/badge/status-active%20development-orange)](#)
 
-CortexLLM is a terminal-based AI control system that coordinates multiple AI agents under a central Brain, routes tasks to the right model at the right cost, and keeps everything it learns across sessions. Instead of starting from scratch every time, it maintains hot/warm/cold memory tiers so context is always available. Instead of using one model for everything, it routes heavy reasoning to a capable model and high-volume work to a cheaper, faster worker — configurable per task.
+## What is CortexLLM?
 
-<p align="center">
-  <img src="https://user-gen-media-assets.s3.amazonaws.com/gemini_images/b01d87cc-4260-4143-be9e-766ad90a727d.png" alt="CortexLLM Architecture" width="480">
-</p>
+CortexLLM is a cross-platform session persistence and memory system that enables AI agents to:
 
-> ⚠️ **Active Development — v0.2.0.** Production config package for OpenClaw included. Anti-hallucination protocols, TOS compliance, and multi-platform agent support. See [production/openclaw/](production/openclaw/) for install.
+- **Maintain persistent memory** across sessions and platforms
+- **Share context** between different AI systems (OpenClaw, Claude Desktop, OpenCode)
+- **Auto-recover** from session errors and context overflow
+- **Prevent hallucinations** through verification systems
+- **Detect failure loops** before wasting tokens
 
----
+## Quick Start
 
-## What It Does
+```bash
+# Install
+cd ~/.openclaw/production/cortexllm
+./install.sh
 
-| Feature | Description |
-|---------|-------------|
-| **Multi-agent orchestration** | A central Brain routes tasks to specialized workers (OpenCode, OpenClaw, or custom agents) |
-| **Configurable model routing** | Each worker slot targets cloud or local Ollama models independently via env/config |
-| **Automatic downstepping** | Heavy reasoning → primary model; high-volume text tasks → cheaper worker with per-slot token caps |
-| **Three-tier memory** | Hot (active session), Warm (recent cross-session), Cold (permanent vault) — all atomic JSON writes |
-| **DOM pruning** | Browser/scraper workers strip scripts, ads, SVGs, and headers before content hits the context window |
-| **Heartbeat + session recovery** | Synchronous heartbeat runs before every agent turn to rehydrate context and recover stale sessions |
-| **Background promoter** | Async "dreamer" worker scans warm memory and promotes durable facts to cold vault |
-| **Anti-hallucination protocol** | Workers must verify CLI flags, service health, and grep source before generating or executing code |
-| **Atomic writes** | All memory updates use temp-file + rename to prevent corruption on crash |
-| **Terminal UI** | Bubble Tea TUI with chat, workers dashboard, and token usage widget |
-
----
+# Verify installation
+cortexllm-watch
+```
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                        CORTEXLLM                             │
-├──────────────────────────────────────────────────────────────┤
-│                                                              │
-│   ┌──────────────────────────────────────────────────────┐  │
-│   │                   BRAIN (Orchestrator)                │  │
-│   │   Reasoning Slot              Worker Slot             │  │
-│   │   (gpt-oss:20b-cloud)         (deepseek-v4-flash:cloud) │
-│   └────────────────────────┬─────────────────────────────┘  │
-│                            │                                 │
-│        ┌───────────────────┼───────────────────┐            │
-│        ▼                   ▼                   ▼            │
-│   ┌─────────┐        ┌──────────┐        ┌──────────┐       │
-│   │OpenCode │        │OpenClaw  │        │ Custom   │       │
-│   │Planner  │        │Executor  │        │ Workers  │       │
-│   └────┬────┘        └────┬─────┘        └────┬─────┘       │
-│        │                  │                   │             │
-│        └──────────────────┼───────────────────┘            │
-│                           │                                 │
-│                  ┌────────▼────────┐                        │
-│                  │  MEMORY SYSTEM  │                        │
-│                  │  HOT/WARM/COLD  │                        │
-│                  └─────────────────┘                        │
-│                           │                                 │
-│          ┌────────────────┴────────────────┐               │
-│          ▼                                 ▼               │
-│   ┌─────────────────┐             ┌─────────────────┐      │
-│   │  SessionHeart-  │             │  Background     │      │
-│   │  beat (sync)    │             │  Promoter       │      │
-│   │  runs before    │             │  (async dreamer)│      │
-│   │  every turn     │             │  promotes warm  │      │
-│   └─────────────────┘             │  → cold vault   │      │
-│                                   └─────────────────┘      │
-└──────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│                   CortexLLM Core                        │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
+│  │   Session    │  │    Memory    │  │   Heartbeat  │  │
+│  │  Heartbeat   │  │    Manager   │  │   Service    │  │
+│  └──────────────┘  └──────────────┘  └──────────────┘  │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
+│  │    Model     │  │   Anti-      │  │    Loop      │  │
+│  │    Router    │  │ Hallucination│  │    Guard     │  │
+│  └──────────────┘  └──────────────┘  └──────────────┘  │
+└─────────────────────────────────────────────────────────┘
+                         │
+         ┌───────────────┼───────────────┐
+         ▼               ▼               ▼
+   ┌──────────┐   ┌──────────┐   ┌──────────┐
+   │ OpenClaw │   │  Claude  │   │ OpenCode │
+   │ (MCP)    │   │ Desktop  │   │  (MCP)   │
+   └──────────┘   └──────────┘   └──────────┘
 ```
 
-### Agents
+### Memory Tiers
 
-- **Brain** — Central orchestrator. Manages sessions, routes tasks between reasoning and worker slots, and enforces the SEARCH FIRST anti-hallucination protocol.
-- **OpenCode (Planner)** — Handles high-level reasoning, code generation, and strategic analysis. Targets the reasoning model slot.
-- **OpenClaw (Executor)** — Handles browser automation via CDP (port 9222), shell commands, and local file operations. Targets the worker slot.
-- **Custom Workers** — Additional named workers can be defined and routed independently. Each has its own kill command, model config, and per-slot token cap.
+| Tier | Location | Purpose |
+|------|----------|---------|
+| **Hot** | `~/.config/cortexllm/memory/hot/{platform}.json` | Active session per platform |
+| **Warm** | `~/.config/cortexllm/memory/warm/unified.json` | Merged cross-platform context |
+| **Cold** | `~/.config/cortexllm/memory/cold/{category}.json` | Archived/permanent knowledge |
 
-### Model Routing
+## Core Features
 
-Both slots route through the **local Ollama daemon** (`http://127.0.0.1:11434`). The `:cloud` suffix tells Ollama to run the model on Ollama's cloud infrastructure rather than your local GPU — requires `ollama auth login` and an active Ollama Max subscription.
+### 1. Session Heartbeat
+Runs before every agent turn to:
+- Detect context overflow before failures
+- Auto-rotate sessions when corrupted
+- Rehydrate context from warm memory
+- Handle file lock conflicts
 
-```
-Reasoning Slot → gpt-oss:20b-cloud        (via local Ollama daemon → Ollama cloud)
-Worker Slot    → deepseek-v4-flash:cloud   (via local Ollama daemon → Ollama cloud)
-```
+### 2. Anti-Hallucination System
+Verifies before acting:
+- Files exist and are readable
+- Services are running (port + process)
+- Commands exist in PATH
+- User claims match reality
 
-To pull cloud models before first run:
+### 3. Loop Guard
+Prevents wasted tokens:
+- Detects repetitive failure patterns
+- Blocks after 3 failures or 2 same-approach failures
+- Forces strategy change
+
+### 4. Model Router
+Automatic delegation:
+- Primary model for reasoning/planning
+- Worker model for simple tasks
+- Transparent sub-agent spawning
+
+### 5. MCP Server
+Universal memory access:
+- `memory_read`, `memory_write`, `memory_search`
+- Any MCP-compatible client can connect
+- Shared context across all platforms
+
+## Installation
+
 ```bash
-ollama auth login
-ollama pull gpt-oss:20b-cloud
-ollama pull deepseek-v4-flash:cloud
+cd ~/.openclaw/production/cortexllm
+./install.sh
 ```
 
-To switch to a different cloud model, change `worker_model` in `config.json`. Available cloud models:
-- `gpt-oss:20b-cloud`, `gpt-oss:120b-cloud`
-- `deepseek-v4-flash:cloud`
-- `qwen3-coder:480b-cloud`
-
----
-
-## Memory Tiers
-
-| Tier | Location | Default Limit | Purpose |
-|------|----------|---------------|---------|
-| **HOT** | `~/.config/cortexllm/memory/hot/` | 200 msgs | Active session context, flushed to disk atomically |
-| **WARM** | `~/.config/cortexllm/memory/warm/` | 500 msgs (scales with active models) | Recent cross-session context; 70/30 split keeps buffer for all platforms |
-| **COLD** | `~/.config/cortexllm/memory/cold/` | Unlimited | Permanent knowledge vault — facts, workflows, decisions, lessons |
-
-**Warm memory scales automatically.** With 2 models it splits 70/30 (each gets 30% guaranteed buffer); with 3 it becomes roughly 70/10/10/10; the system auto-adjusts the per-model buffer floor as you add or remove workers.
-
-**COLD vault schema** (every record is structured):
-- `id`, `entity`, `record_type` (fact / preference / workflow / decision / lesson)
-- `summary`, `detail`, `source_kind`, `confidence`, `confirmation_count`
-- `tags`, `status` (active / superseded / stale), `created_at`, `last_seen_at`
-
----
-
-## Quick Install
-
-### One-Line Install
-```bash
-curl -fsSL https://raw.githubusercontent.com/greyok00/cortexllm/main/install.sh | bash
-```
-
-### From Source
-```bash
-git clone https://github.com/greyok00/cortexllm.git
-cd cortexllm
-bash install.sh
-```
-
-### Verify
-```bash
-cortexllm --version
-cortexllm
-```
-
----
-
-## Requirements
-
-### Core
-- **Go 1.24+** — TUI binary
-- **Python 3.10+** — Worker backend
-- **Ollama** running on port 11434
-- **Ollama Max subscription** — required for `:cloud` models
-- Sign in with `ollama auth login` before first use
-
-### Optional
-- **OpenClaw Gateway** on port 18789 — agent/executor features
-- **Brave Browser (CDP)** on port 9222 — browser automation
-- **Searxng** on port 8888 — web search integration
-
----
+Installs:
+- CortexLLM Python package
+- MCP server and systemd services
+- Session heartbeat (all platforms)
+- Anti-hallucination and loop guard
+- Auto-save cron job
 
 ## Configuration
 
-Config file: `~/.config/cortexllm/config.json`
+**Location:** `~/.config/cortexllm/config.json`
 
 ```json
 {
-  "system": {
-    "name": "CortexLLM",
-    "version": "0.2.0"
-  },
-  "model": {
-    "reasoning_model": "gpt-oss:20b-cloud",
-    "reasoning_host": "cloud",
-    "worker_model": "deepseek-v4-flash:cloud",
-    "worker_host": "cloud",
-    "fallback": "ollama/llama3.1:8b",
-    "context_tokens": 262144,
-    "reasoning_token_cap": 32768,
-    "worker_token_cap": 16384
-  },
-  "platforms": {
-    "openclaw": {
-      "enabled": true,
-      "mode": "cli",
-      "token_env": "OPENCLAW_GATEWAY_TOKEN"
-    },
-    "opencode": {
-      "enabled": true,
-      "mode": "ollama",
-      "endpoint": "http://127.0.0.1:11434"
-    }
-  },
-  "memory": {
-    "path": "~/.config/cortexllm/memory",
-    "hot_limit": 200,
-    "warm_limit": 500,
-    "auto_rotate": true
-  },
-  "gateway": {
-    "port": 18789,
-    "bind": "lan"
+  "brain": {
+    "heartbeat_interval": 30,
+    "task_timeout": 300
   },
   "browser": {
-    "enabled": true,
     "cdp_url": "http://127.0.0.1:9222"
   },
   "search": {
-    "enabled": true,
-    "provider": "searxng",
     "base_url": "http://127.0.0.1:8888"
-  },
-  "userStyle": {
-    "path": "~/.config/cortexllm/USER_STYLE.md",
-    "enforce": true
   }
 }
 ```
 
-### Environment Variables
-```bash
-export OPENCLAW_GATEWAY_TOKEN=your_token_here
-export OLLAMA_HOST=127.0.0.1:11434
-export CORTEXLLM_CONFIG_PATH=~/.config/cortexllm/config.json
-```
+## Platform Support
 
----
+| Platform | Heartbeat | Memory | MCP |
+|----------|-----------|--------|-----|
+| OpenClaw | ✅ Skill | ✅ Hot/Warm | ✅ |
+| Claude Desktop | ✅ MCP | ✅ Hot/Warm | ✅ |
+| OpenCode | ✅ Pre-turn hook | ✅ Hot/Warm | ✅ |
 
-## Usage
+## Files
 
-### Launch TUI
-```bash
-cortexllm
-```
+### Source
+- `~/.openclaw/production/cortexllm/` - Master repository
 
-### Keyboard Controls
-| Key | Action |
-|-----|--------|
-| `Tab` | Switch platform / move focus |
-| `↑ / ↓` | Scroll messages |
-| `Enter` | Send message |
-| `Ctrl+T` | Theme picker |
-| `Ctrl+P` | Config overlay |
-| `Ctrl+C` | Quit (auto-saves) |
+### Installed To
+- `~/.config/cortexllm/` - Config and memory
+- `~/.local/bin/` - Binaries
+- `~/.openclaw/skills/` - OpenClaw skills
+- `~/.config/opencode/hooks/` - OpenCode hooks
 
-### CLI Commands
-```bash
-cortexllm send "research Python async patterns"
-cortexllm memory status
-cortexllm tasks list
-```
+## Services
 
-### Python Backend (Headless)
-```bash
-# Run without TUI
-python3 -m cortexllm.cli.unified
+### systemd
+- `cortexllm.service` - Main memory sync
+- `cortexllm-heartbeat.service` - Health monitoring (5-min)
+- `cortexllm-mcp.service` - MCP server
 
-# Watch backend status
-python3 watch.py
-```
-
----
-
-## SEARCH FIRST Protocol (Anti-Hallucination)
-
-Every worker must complete these steps **before** generating or executing code:
-
-1. Verify CLI flags via `--help`
-2. Check service health (e.g., `curl <port>/health`)
-3. Search local source code for existing patterns with `grep`
-4. Show research results to the user
-
-This is enforced at the Brain level — workers that skip verification are retried.
-
----
-
-## Project Structure
-
-```
-cortexllm/
-├── main.go                     # Go TUI (Bubble Tea)
-├── proxy/main.go               # Message proxy
-├── install.sh                  # Installer
-├── watch.py                    # Backend status monitor
-├── memory-tools.py             # Memory CLI utilities
-├── migrate-*.py                # Memory migration scripts
-├── cortexllm/                  # Python package
-│   ├── core/
-│   │   ├── brain.py            # Task orchestration + queue drain
-│   │   ├── memory.py           # Atomic persistence
-│   │   ├── config.py           # Configuration loader
-│   │   └── orchestrator.py     # Worker routing
-│   ├── workers/
-│   │   └── __init__.py         # Worker definitions
-│   └── cli/
-│       └── unified.py          # Headless CLI
-├── configs/
-│   └── default.json
-├── docs/
-├── scripts/
-└── .github/                    # CI/CD
-```
-
----
-
-## Troubleshooting
-
-### TUI Won't Start
-```bash
-~/.local/bin/cortexllm         # run binary directly to see error
-curl http://127.0.0.1:11434/api/tags   # check Ollama
-ls -la ~/.config/cortexllm/memory/    # check memory dir
-```
-
-### Cloud Models Not Working
-```bash
-ollama auth login              # sign in to Ollama (requires Max subscription)
-ollama pull gpt-oss:20b-cloud  # pull reasoning model
-ollama pull deepseek-v4-flash:cloud  # pull worker model
-ollama list                    # verify they appear
-```
-
-### OpenClaw Integration Fails
-```bash
-curl http://127.0.0.1:18789/health
-echo $OPENCLAW_GATEWAY_TOKEN
-systemctl --user restart openclaw-gateway
-```
-
-### Memory Not Saving
-```bash
-chmod 755 ~/.config/cortexllm
-cat ~/.config/cortexllm/memory/hot/opencode.json | jq
-df -h ~/.config
-```
-
----
-
-## Security
-
-- **Token Auth** — Gateway requires `GATEWAY_TOKEN` env variable
-- **Local Only** — All services bind to localhost/LAN by default
-- **No External API Keys** — All model requests go through local Ollama daemon; cloud compute is handled by Ollama's infrastructure using your subscription
-- **Atomic Writes** — Temp-file + rename on every memory update
-
----
-
-## Android / Termux
-
-CortexLLM can run on Android via Termux:
-
-```bash
-# Install Termux from F-Droid (preferred) or Play Store
-# Do NOT mix F-Droid and Play Store installs on the same device
-
-pkg install golang python
-git clone https://github.com/greyok00/cortexllm.git
-cd cortexllm && bash install.sh
-```
-
-For a cross-compiled TUI binary (no Termux required at runtime):
-```bash
-GOOS=android GOARCH=arm64 go build -o cortex-tui ./main.go
-```
-
-See [ROADMAP.md](ROADMAP.md) for the Android wrapper app milestone.
-
----
-
-## Production Config Package
-
-v0.2 includes a production-ready configuration package for OpenClaw with anti-hallucination and TOS compliance rules.
-
-### Install
-```bash
-cd cortexllm/production/openclaw
-./install.sh
-```
-
-### What's Included
-- **workspace/SOUL.md** - Core agent rules with PRE-FLIGHT protocol
-- **workspace/AGENTS.md** - TOS compliance and browser automation rules
-- **production/platforms/** - Platform configs for OpenClaw, Claude Code, OpenCode
-- **openclaw.json.config** - Base configuration template
-
-### Key Features
-- **PRE-FLIGHT PROTOCOL** - Snapshot before any browser action
-- **QUIZ/FORM PROTOCOL** - Read actual questions before answering
-- **TOS COMPLIANCE** - Auto-stop on CAPTCHA, warnings, rate limits
-- **RED FLAGS** - Detects ban warnings and stops immediately
-
-See [production/openclaw/README.md](production/openclaw/README.md) for full documentation.
-
----
-
-## Roadmap
-
-See [ROADMAP.md](ROADMAP.md) for the full feature roadmap with milestones and implementation checklists.
-
----
+### Cron
+- Auto-save: `* * * * *` - Captures sessions every minute
 
 ## Development
 
 ```bash
-# Build Go TUI
-go build -o ~/.local/bin/cortexllm ./main.go
+# Run tests
+python3 -m pytest
 
-# Install Python workers (editable)
-pip3 install -e .
-
-# Test memory system
-python3 -c "from cortexllm.core.memory import Memory; m = Memory(); print('OK')"
-
-# Run test suite
-make test
+# Type check
+mypy cortexllm/
 ```
 
----
+## License
+
+MIT - See [LICENSE](LICENSE)
 
 ## Contributing
 
 1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/my-feature`
-3. Commit your changes: `git commit -m 'Add feature'`
-4. Push: `git push origin feature/my-feature`
-5. Open a Pull Request
+2. Create a feature branch
+3. Submit a pull request
 
----
-
-## License
-
-MIT — see [LICENSE](LICENSE).
-
----
-
-**Built by [@greyok00](https://github.com/greyok00)**  
-*Terminal-native AI orchestration for the modern developer*
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
