@@ -2,7 +2,7 @@
 
 > Universal Memory System for AI Agents
 
-[![Version](https://img.shields.io/badge/version-2026.6.29-blue)](https://github.com/yourusername/cortexllm)
+[![Version](https://img.shields.io/badge/version-0.2.1-blue)](https://github.com/greyok00/cortexllm/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 ## What is CortexLLM?
