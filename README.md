@@ -2,7 +2,7 @@
 
 **Local-first AI orchestration. Persistent memory. Multi-agent task routing. Terminal-native.**
 
-[![Version](https://img.shields.io/badge/version-0.3.0-brightgreen)](https://github.com/greyok00/cortexllm/releases)
+[![Version](https://img.shields.io/badge/version-0.2.0-brightgreen)](https://github.com/greyok00/cortexllm/releases)
 [![Go Build](https://img.shields.io/badge/go-1.24+-00ADD8?logo=go)](https://go.dev)
 [![Python](https://img.shields.io/badge/python-3.10+-3776AB?logo=python)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -14,7 +14,7 @@ CortexLLM is a terminal-based AI control system that coordinates multiple AI age
   <img src="https://user-gen-media-assets.s3.amazonaws.com/gemini_images/b01d87cc-4260-4143-be9e-766ad90a727d.png" alt="CortexLLM Architecture" width="480">
 </p>
 
-> ⚠️ **Active Development — v0.3.0.** Core memory system and worker routing are functional. TUI improvements are ongoing. See [ROADMAP.md](ROADMAP.md) for what's planned.
+> ⚠️ **Active Development — v0.2.0.** Production config package for OpenClaw included. Anti-hallucination protocols, TOS compliance, and multi-platform agent support. See [production/openclaw/](production/openclaw/) for install.
 
 ---
 
@@ -167,7 +167,7 @@ Config file: `~/.config/cortexllm/config.json`
 {
   "system": {
     "name": "CortexLLM",
-    "version": "0.3.0"
+    "version": "0.2.0"
   },
   "model": {
     "reasoning_model": "gpt-oss:20b-cloud",
@@ -364,6 +364,32 @@ GOOS=android GOARCH=arm64 go build -o cortex-tui ./main.go
 ```
 
 See [ROADMAP.md](ROADMAP.md) for the Android wrapper app milestone.
+
+---
+
+## Production Config Package
+
+v0.2 includes a production-ready configuration package for OpenClaw with anti-hallucination and TOS compliance rules.
+
+### Install
+```bash
+cd cortexllm/production/openclaw
+./install.sh
+```
+
+### What's Included
+- **workspace/SOUL.md** - Core agent rules with PRE-FLIGHT protocol
+- **workspace/AGENTS.md** - TOS compliance and browser automation rules
+- **production/platforms/** - Platform configs for OpenClaw, Claude Code, OpenCode
+- **openclaw.json.config** - Base configuration template
+
+### Key Features
+- **PRE-FLIGHT PROTOCOL** - Snapshot before any browser action
+- **QUIZ/FORM PROTOCOL** - Read actual questions before answering
+- **TOS COMPLIANCE** - Auto-stop on CAPTCHA, warnings, rate limits
+- **RED FLAGS** - Detects ban warnings and stops immediately
+
+See [production/openclaw/README.md](production/openclaw/README.md) for full documentation.
 
 ---
 
