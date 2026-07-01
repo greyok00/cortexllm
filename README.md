@@ -1,4 +1,4 @@
-# CortexLLM — v0.3.0 (2026-07-01)
+# CortexLLM — (2026-07-01)
 
 **Unified memory system for AI agents.** Single model architecture — `deepseek-v4-flash:cloud`.
 
