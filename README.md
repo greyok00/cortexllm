@@ -11,10 +11,10 @@ See [cortexllm/README.md](cortexllm/README.md) for full feature list, data flow,
 ## Quick Start
 
 ```bash
-python3 save-all-sessions.py              # Save sessions to memory
-python3 memory-tools.py append "text"      # Add to hot memory
-python3 memory-tools.py search "query"     # Search memory
-watcher status                             # Token dashboard
+python3 cortexllm-tools/cli-save-all.py          # Save sessions to memory
+python3 cortexllm-tools/cli-memory.py append text   # Add to hot memory
+python3 cortexllm-tools/cli-memory.py search query  # Search memory
+watcher status                                      # Token dashboard
 ```
 
 ## What It Does
@@ -34,17 +34,16 @@ watcher status                             # Token dashboard
 ## Structure
 
 ```
-cortexllm/           → Engine (10 .py files)
-save-*.py            → Session savers
-memory-tools.py      → CLI tools
-platforms/           → Platform configs
+cortexllm/              → Engine (8 .py files)
+cortexllm-tools/        → CLI tools (cli-memory, cli-save-all, cli-save-session)
+platforms/              → Platform configs (AGENTS.md, SOUL.md)
 ```
 
 ## Install
 
 ```bash
 cp -r cortexllm/ ~/.openclaw/cortexllm/
-cp save-session.py memory-tools.py ~/.local/bin/
+cp cortexllm-tools/* ~/.local/bin/
 ```
 
 Requires: Python 3, Ollama at http://127.0.0.1:11434

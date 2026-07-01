@@ -60,7 +60,7 @@
 | 7 | **Memory Hook** | `memory_hook.py` | OpenClaw integration — hooks into session lifecycle to auto-save context to hot memory |
 | 8 | **OpenCode Hook** | `opencode_memory_hook.py` | OpenCode integration — same memory hooks for the OpenCode platform |
 | 9 | **Platform Configs** | `platforms/` | AGENTS.md, SOUL.md, TOOLS.md, USER.md per platform (openclaw, opencode, claude) |
-| 10 | **CLI Tools** | `memory-tools.py`, `save-session.py`, `save-all-sessions.py` | Append to memory, search, save individual/all sessions |
+| 10 | **CLI Tools** | `cortexllm-tools/` | `cli-memory.py`, `cli-save-all.py`, `cli-save-session.py` — user-facing scripts |
 
 ### Supporting Systems
 
@@ -110,9 +110,7 @@ All git commits use format: `vYYYY-MM-DD: description`.
 │   ├── cortexllm_mcp_server.py    MCP protocol server
 │   ├── README.md                  Engine docs
 │   └── USER-PREFERENCES.md        User config
-├── save-session.py                Session saver
-├── save-all-sessions.py           Bulk session saver
-├── memory-tools.py                CLI memory tools
+├── cortexllm-tools/               CLI tools (cli-memory, cli-save-all, cli-save-session)
 ├── platforms/                     Platform configs
 └── .gitignore                     Blocks memory data
 ```
@@ -121,13 +119,13 @@ All git commits use format: `vYYYY-MM-DD: description`.
 
 ```bash
 # Save current sessions to memory
-python3 save-all-sessions.py
+python3 cortexllm-tools/cli-save-all.py
 
 # Append to hot memory
-python3 memory-tools.py append "your content here"
+python3 cortexllm-tools/cli-memory.py append "your content here"
 
 # Search memory
-python3 memory-tools.py search "query"
+python3 cortexllm-tools/cli-memory.py search "query"
 
 # Check token usage
 watcher status
@@ -146,7 +144,7 @@ User message → OpenClaw → memory_hook.py → MemoryManager → HOT storage
                   ↓
             Heartbeat checks context health each turn
                   ↓
-            save-all-sessions.py → HOT → WARM (on save)
+            cli-save-all.py → HOT → WARM (on save)
                   ↓
             Manual save → COLD (permanent knowledge)
 ```
