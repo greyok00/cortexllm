@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+
+# Memory data (never commit user data)
+**/memory/hot/*.json
+**/memory/warm/*.json
+**/memory/cold/*.json
+**/memory/*.json
+**/state.json
+**/state_manager.py
+**/scheduler/logs/
+**/scheduler/*.db
+**/watcher/state.json
+**/job_registry.json
+**/memory_state.json
+
+# OS
+.DS_Store
+*.tmp
