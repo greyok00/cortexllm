@@ -25,3 +25,7 @@ build/
 # IDE
 .vscode/
 .idea/
+
+# Local-only — never ship to GitHub
+ROADMAP.md
+*.local.md

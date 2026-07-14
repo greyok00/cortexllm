@@ -11,8 +11,8 @@ import fcntl
 from pathlib import Path
 from datetime import datetime, timedelta
 
-# Paths
-CORTEXLLM_ROOT = Path.home() / ".config/cortexllm"
+# Paths — override via CORTEXLLM_DIR env var
+CORTEXLLM_ROOT = Path(os.environ.get("CORTEXLLM_DIR", str(Path.home() / ".config/cortexllm")))
 HOT_OPENCLAW = CORTEXLLM_ROOT / "memory/hot/openclaw.json"
 HOT_OPCODE = CORTEXLLM_ROOT / "memory/hot/opencode.json"
 HOT_CLAUDE = CORTEXLLM_ROOT / "memory/hot/claude.json"

@@ -10,16 +10,18 @@ Provides:
 """
 
 import json
+import os
 import sys
 import asyncio
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Resource, Tool, TextContent
 
-# CortexLLM paths
-CORTEXLLM_DIR = Path.home() / ".config/cortexllm"
+# CortexLLM paths — override via CORTEXLLM_DIR env var
+CORTEXLLM_DIR = Path(os.environ.get("CORTEXLLM_DIR", str(Path.home() / ".config/cortexllm")))
 HOT_DIR = CORTEXLLM_DIR / "memory/hot"
 WARM_DIR = CORTEXLLM_DIR / "memory/warm"
 COLD_DIR = CORTEXLLM_DIR / "memory/cold"
@@ -165,18 +167,7 @@ class CortexLLMMemory:
                     "content": content[:200],
                     "relevance": 0.9
                 })
-        
-        # Search warm memory
-        warm_messages = self.get_warm()
-        for msg in warm_messages[-limit*2:]:
-            content = msg.get("content", "")
-            if query_lower in content.lower():
-                results.append({
-                    "source": "warm/per_profile",
-                    "content": content[:200],
-                    "relevance": 0.9
-                })
-        
+
         # Search cold storage
         for cold_file in COLD_DIR.glob("*.json"):
             try:
@@ -404,7 +395,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 data = {"category": category, "entries": []}
             
             data["entries"].append({
-                "timestamp": str(asyncio.get_event_loop().time()),
+                "timestamp": datetime.now().isoformat(),
                 "knowledge": knowledge
             })
             memory.set_cold(category, data)

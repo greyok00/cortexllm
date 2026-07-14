@@ -14,6 +14,7 @@ Warm Memory Algorithm:
   - Never completely loses profile context
 """
 import json
+import os
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Any, Optional
@@ -21,7 +22,7 @@ from typing import Dict, List, Any, Optional
 from cortexllm_db import db
 from cortexllm_models import EventType
 
-CORTEXLLM_DIR = Path.home() / ".config/cortexllm"
+CORTEXLLM_DIR = Path(os.environ.get("CORTEXLLM_DIR", str(Path.home() / ".config/cortexllm")))
 HOT_DIR = CORTEXLLM_DIR / "memory/hot"
 WARM_DIR = CORTEXLLM_DIR / "memory/warm"
 COLD_DIR = CORTEXLLM_DIR / "memory/cold"

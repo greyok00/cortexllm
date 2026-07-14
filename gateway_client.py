@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CortexClaw Gateway Client — shared HTTP client for the browser automation gateway.
+CortexLLM Gateway Client — shared HTTP client for the browser automation gateway.
 
 Wraps all Gateway API calls with:
   - Retry decorator (exponential backoff + jitter)
@@ -16,6 +16,7 @@ Usage:
 """
 
 import json
+import os
 import urllib.request
 import urllib.parse
 from datetime import datetime
@@ -48,11 +49,13 @@ def _log_retry(attempt: int, error: Exception, delay: float):
 class GatewayClient:
     """HTTP client for the browser automation gateway with reliability wrappers."""
 
-    def __init__(self, base_url: str = "http://127.0.0.1:18789",
+    def __init__(self, base_url: str = None,
                  token: str = "",
                  worker_name: str = "gateway"):
-        self.base_url = base_url.rstrip("/")
-        self.token = token
+        self.base_url = (base_url or os.environ.get(
+            "CORTEXLLM_GATEWAY_URL", "http://127.0.0.1:18789"
+        )).rstrip("/")
+        self.token = token or os.environ.get("CORTEXLLM_GATEWAY_TOKEN", "")
         self.worker_name = worker_name
         self._headers = {
             "Authorization": f"Bearer {self.token}",

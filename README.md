@@ -23,7 +23,7 @@ python3 cortexllm_mcp_server.py
 | Feature | Description |
 |---------|-------------|
 | **Three-tier memory** | Hot (active session), Warm (shared context), Cold (permanent facts) |
-| **SQLite-native** | WAL mode, single-writer, indexed queries. No JSON files for state |
+| **SQLite-native** | WAL mode, single-writer, indexed queries |
 | **MCP server** | Exposes `memory_read`, `memory_write`, `memory_search`, `memory_clear` |
 | **Platform-agnostic** | Works with Claude Code, Cursor, any MCP-compatible agent |
 | **Per-profile isolation** | Each platform gets its own hot memory scope. Warm/cold are shared |
@@ -59,6 +59,7 @@ python3 cortexllm_mcp_server.py
 | `cold_distiller.py` | Background process for warm→cold memory distillation |
 | `profiles.py` | Per-profile isolated workspaces |
 | `gateway_client.py` | HTTP client for agent gateway integration |
+| `reliability.py` | Retry decorator + circuit breaker for gateway calls |
 | `migrate_to_sqlite.py` | JSON → SQLite migration tool |
 | `anti_hallucination.py` | Pre-execution verification |
 | `setup.py` | First-time setup script |

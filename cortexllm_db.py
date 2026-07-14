@@ -17,13 +17,14 @@ Connection model:
 """
 
 import json
+import os
 import sqlite3
 import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-DB_DIR = Path.home() / ".config/cortexllm"
+DB_DIR = Path(os.environ.get("CORTEXLLM_DIR", str(Path.home() / ".config/cortexllm")))
 DB_PATH = DB_DIR / "cortexllm.db"
 MEMORY_DIR = DB_DIR / "memory"
 

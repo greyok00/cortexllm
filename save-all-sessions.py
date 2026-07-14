@@ -16,14 +16,14 @@ from datetime import datetime
 
 # Also write to SQLite for CortexLLM memory system
 try:
-    sys.path.insert(0, str(Path.home() / ".openclaw/cortexllm"))
+    sys.path.insert(0, str(Path(__file__).parent))
     from memory_manager import manager
     SQLITE_AVAILABLE = True
 except Exception:
     SQLITE_AVAILABLE = False
 
-# CortexLLM paths
-CORTEXLLM_DIR = Path.home() / ".config/cortexllm"
+# CortexLLM paths — override via CORTEXLLM_DIR env var
+CORTEXLLM_DIR = Path(os.environ.get("CORTEXLLM_DIR", str(Path.home() / ".config/cortexllm")))
 HOT_DIR = CORTEXLLM_DIR / "memory/hot"
 WARM_DIR = CORTEXLLM_DIR / "memory/warm"
 STATE_FILE = CORTEXLLM_DIR / "saved_sessions_v2.json"
@@ -31,11 +31,9 @@ STATE_FILE = CORTEXLLM_DIR / "saved_sessions_v2.json"
 HOT_LIMIT = 500  # Per platform
 WARM_LIMIT = 2000
 
-# Banned content filter - messages containing these terms are NEVER saved
-BANNED_TERMS = [
-    "freecash", "quickrewards", "taskpulse", "2captcha",
-    "freecash.com", "quickrewards.net", "taskpul.se",
-]
+# Optional content filter — comma-separated terms in CORTEXLLM_BANNED_TERMS
+# are never saved. Empty by default (no filtering).
+BANNED_TERMS = [t.strip() for t in os.environ.get("CORTEXLLM_BANNED_TERMS", "").split(",") if t.strip()]
 
 # Agent configurations — override via CORTEXLLM_AGENT_SOURCES env var (JSON)
 AGENT_SOURCES = json.loads(os.environ.get("CORTEXLLM_AGENT_SOURCES", '{}'))
