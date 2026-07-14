@@ -1,0 +1,21 @@
+{
+  "db_path": "~/.config/cortexllm/cortexllm.db",
+  "memory": {
+    "hot_limit": 300,
+    "warm_limit": 2000,
+    "cold_limit": 50000
+  },
+  "heartbeat": {
+    "interval_minutes": 30,
+    "isolated_session": true
+  },
+  "mcp_server": {
+    "port": 0,
+    "transport": "stdio"
+  },
+  "model": {
+    "provider": "ollama",
+    "name": "deepseek-v4-flash:cloud",
+    "context_window": 262144
+  }
+}

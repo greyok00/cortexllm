@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Memory data - never commit
+**/cortexllm.db
+**/cortexllm.db-wal
+**/cortexllm.db-shm
+**/memory/
+
+# Environment
+.env
+.env.local
+*.env
+
+# OS
+.DS_Store
+*.tmp
+*.swp
+
+# IDE
+.vscode/
+.idea/

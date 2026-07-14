@@ -34,9 +34,14 @@ python3 cortexllm_mcp_server.py
 ## Setup
 
 ```bash
-python3 -m pip install mcp  # Required for MCP server
-cp -r cortexllm/ ~/.openclaw/cortexllm/
-# Database auto-initializes on first use
+# Run setup (creates database, config, directories)
+python3 setup.py
+
+# Or do it manually:
+python3 -c "from cortexllm_db import db; db.initialize(); print('OK')"
+
+# Run the MCP server (for Claude Code, Cursor, etc.)
+python3 cortexllm_mcp_server.py
 ```
 
 ## Files
@@ -51,7 +56,13 @@ cp -r cortexllm/ ~/.openclaw/cortexllm/
 | `memory-tools.py` | CLI tools for memory operations |
 | `heartbeat_service.py` | Read-only session health monitor |
 | `save-all-sessions.py` | Extract agent sessions into memory |
+| `cold_distiller.py` | Background process for warm→cold memory distillation |
+| `profiles.py` | Per-profile isolated workspaces |
+| `gateway_client.py` | HTTP client for agent gateway integration |
+| `migrate_to_sqlite.py` | JSON → SQLite migration tool |
 | `anti_hallucination.py` | Pre-execution verification |
+| `setup.py` | First-time setup script |
+| `config/default.json` | Default configuration template |
 | `mcp-server-config.json` | MCP server configuration |
 
 ## Database
@@ -62,6 +73,8 @@ cp -r cortexllm/ ~/.openclaw/cortexllm/
 Memory_Hot   → Per-platform active session, FIFO capped at 300/profile
 Memory_Warm  → Shared context buffer, rolling 2000
 Memory_Cold  → Permanent distilled facts, never expires
+Logs         → Event log for observability
+Checkpoints  → Session resume points
 ```
 
 ## License
