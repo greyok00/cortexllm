@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+
+# Memory data
+**/memory/
+**/state.json
+**/cortexllm.db
+**/cortexllm.db-wal
+**/cortexllm.db-shm
+
+# OS
+.DS_Store
+*.tmp
+
+# Sensitive data
+**/escort_*
+**/greek_results*
+**/hotspot_*
+**/scrape_*
+**/tts-api*
