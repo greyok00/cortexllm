@@ -2,10 +2,9 @@
   "mcpServers": {
     "cortexllm": {
       "command": "python3",
-      "args": ["/home/grey/.openclaw/cortexllm/cortexllm_mcp_server.py"],
+      "args": ["cortexllm_mcp_server.py"],
       "env": {
-        "PYTHONPATH": "/home/grey/.openclaw/cortexllm",
-        "HOME": "/home/grey"
+        "PYTHONPATH": "."
       },
       "description": "CortexLLM Unified Memory System - Universal memory for all AI agents",
       "capabilities": [
@@ -13,72 +12,6 @@
         "memory_write",
         "memory_search",
         "memory_clear"
-      ]
-    },
-    "wp-studio": {
-      "command": "npx",
-      "args": ["-y", "@automattic/wordpress-agent-skills"],
-      "description": "WordPress Studio - local WordPress + custom block theme generation",
-      "capabilities": [
-        "create_site",
-        "design_theme",
-        "deploy_to_studio",
-        "export_site"
-      ]
-    },
-    "tailwind": {
-      "command": "npx",
-      "args": ["-y", "@clarity-contrib/tailwindcss-mcp-server"],
-      "description": "TailwindCSS component generator - custom UI from prompts",
-      "capabilities": [
-        "generate_component",
-        "convert_css",
-        "color_palette"
-      ]
-    },
-    "figma": {
-      "command": "npx",
-      "args": ["--transport", "http", "https://mcp.figma.com/mcp"],
-      "description": "Figma integration - convert designs to code",
-      "capabilities": [
-        "export_frames",
-        "extract_design_tokens",
-        "generate_code"
-      ]
-    },
-    "zipwp": {
-      "command": "npx",
-      "args": ["-y", "zipwp-mcp"],
-      "description": "ZipWP - auto-deploy WordPress sites to hosting",
-      "capabilities": [
-        "deploy_site",
-        "clone_site",
-        "manage_blueprints"
-      ]
-    },
-    "firecrawl": {
-      "command": "npx",
-      "args": ["-y", "firecrawl-mcp"],
-      "env": {
-        "FIRECRAWL_API_KEY": "fc-cfe8f05b0dd9449eb173dce5c8c06788"
-      },
-      "description": "Web scraping, search, and crawl - extract data from any website",
-      "capabilities": [
-        "scrape_url",
-        "web_search",
-        "crawl",
-        "map_urls"
-      ]
-    },
-    "gsc": {
-      "command": "uvx",
-      "args": ["gsc-mcp-tools"],
-      "description": "Google Search Console - SEO monitoring and sitemap submission",
-      "capabilities": [
-        "submit_sitemap",
-        "check_rankings",
-        "inspect_url",
-        "search_analytics"
       ]
     }
   }
