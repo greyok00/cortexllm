@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 from datetime import datetime
 
-# Import CortexClaw Memory Manager (try new path first, then old)
+# Import CortexLLM Memory Manager — add common install paths
 for _p in [str(Path.home() / ".cortexclaw"), str(Path.home() / ".openclaw/cortexllm"), str(Path.home() / ".openclaw"), str(Path.home() / ".local/bin")]:
     if _p not in sys.path:
         sys.path.insert(0, _p)

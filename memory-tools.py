@@ -396,7 +396,7 @@ def archive_to_cold(messages, session_id, platform=None):
 
 def read_inbox():
     """Read messages from OpenClaw inbox (sent from CortexLLM TUI)"""
-    inbox_dir = Path.home() / ".openclaw" / "inbox"
+    inbox_dir = Path(os.environ.get("CORTEXLLM_INBOX_DIR", str(Path.home() / ".config/cortexllm" / "inbox")))
     if not inbox_dir.exists():
         return []
 

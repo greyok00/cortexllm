@@ -18,6 +18,7 @@ Usage:
 """
 
 import json
+import os
 import shutil
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -92,7 +93,7 @@ class ProfileRegistry:
     """Manages profile creation, lookup, and persistence."""
 
     def __init__(self, base_dir: Path = None):
-        self._base_dir = base_dir or Path.home() / ".cortexclaw" / "profiles"
+        self._base_dir = base_dir or Path(os.environ.get("CORTEXLLM_PROFILES_DIR", str(Path.home() / ".config/cortexllm" / "profiles")))
         self._base_dir.mkdir(parents=True, exist_ok=True)
         self._registry_file = self._base_dir / "registry.json"
         self._profiles: Dict[str, Profile] = {}

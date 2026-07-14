@@ -21,6 +21,7 @@ Usage:
 """
 
 import json
+import os
 import re
 import sys
 import time
@@ -226,7 +227,7 @@ class ColdDistiller:
     def _load_seen_facts(self):
         """Load previously seen fact hashes."""
         try:
-            seen_file = Path.home() / ".config/cortexllm" / "seen_facts.json"
+            seen_file = Path(os.environ.get("CORTEXLLM_DIR", str(Path.home() / ".config/cortexllm"))) / "seen_facts.json"
             if seen_file.exists():
                 self._seen_facts = set(json.loads(seen_file.read_text()))
         except Exception:
@@ -235,7 +236,7 @@ class ColdDistiller:
     def _save_seen_facts(self):
         """Save seen fact hashes for next run."""
         try:
-            seen_file = Path.home() / ".config/cortexllm" / "seen_facts.json"
+            seen_file = Path(os.environ.get("CORTEXLLM_DIR", str(Path.home() / ".config/cortexllm"))) / "seen_facts.json"
             seen_file.parent.mkdir(parents=True, exist_ok=True)
             # Keep only the most recent 10,000 to avoid unbounded growth
             facts = list(self._seen_facts)[-10000:]

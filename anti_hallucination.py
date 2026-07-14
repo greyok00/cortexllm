@@ -28,19 +28,19 @@ Usage:
 """
 
 import json
+import os
 import subprocess
 import re
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
-# Paths to verify
+# Paths to verify — override via env var CORTEXLLM_DIR
+CORTEXLLM_DIR = Path(os.environ.get("CORTEXLLM_DIR", str(Path.home() / ".config/cortexllm")))
 COMMON_PATHS = {
-    "gateway": Path.home() / ".openclaw/openclaw.json",
-    "cortexllm_config": Path.home() / ".config/cortexllm/config.json",
-    "openclaw_sessions": Path.home() / ".openclaw/agents/brain/sessions",
-    "memory_hot": Path.home() / ".config/cortexllm/memory/hot",
-    "memory_warm": Path.home() / ".config/cortexllm/memory/warm",
+    "cortexllm_config": CORTEXLLM_DIR / "config.json",
+    "memory_hot": CORTEXLLM_DIR / "memory/hot",
+    "memory_warm": CORTEXLLM_DIR / "memory/warm",
 }
 
 # Services to check
