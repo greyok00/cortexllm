@@ -9,21 +9,20 @@ Saves sessions from ALL AI agents to hot memory:
 """
 import sys
 import json
-import os
 import hashlib
 from pathlib import Path
 from datetime import datetime
 
 # Also write to SQLite for CortexLLM memory system
 try:
-    sys.path.insert(0, str(Path(__file__).parent))
+    sys.path.insert(0, str(Path.home() / ".openclaw/cortexllm"))
     from memory_manager import manager
     SQLITE_AVAILABLE = True
 except Exception:
     SQLITE_AVAILABLE = False
 
-# CortexLLM paths — override via CORTEXLLM_DIR env var
-CORTEXLLM_DIR = Path(os.environ.get("CORTEXLLM_DIR", str(Path.home() / ".config/cortexllm")))
+# CortexLLM paths
+CORTEXLLM_DIR = Path.home() / ".config/cortexllm"
 HOT_DIR = CORTEXLLM_DIR / "memory/hot"
 WARM_DIR = CORTEXLLM_DIR / "memory/warm"
 STATE_FILE = CORTEXLLM_DIR / "saved_sessions_v2.json"
@@ -31,33 +30,33 @@ STATE_FILE = CORTEXLLM_DIR / "saved_sessions_v2.json"
 HOT_LIMIT = 500  # Per platform
 WARM_LIMIT = 2000
 
-# Optional content filter — comma-separated terms in CORTEXLLM_BANNED_TERMS
-# are never saved. Empty by default (no filtering).
-BANNED_TERMS = [t.strip() for t in os.environ.get("CORTEXLLM_BANNED_TERMS", "").split(",") if t.strip()]
+# Banned content filter - messages containing these terms are NEVER saved
+BANNED_TERMS = [
+    "freecash", "quickrewards", "taskpulse", "2captcha",
+    "freecash.com", "quickrewards.net", "taskpul.se",
+]
 
-# Agent configurations — override via CORTEXLLM_AGENT_SOURCES env var (JSON)
-AGENT_SOURCES = json.loads(os.environ.get("CORTEXLLM_AGENT_SOURCES", '{}'))
-if not AGENT_SOURCES:
-    AGENT_SOURCES = {
-        "openclaw": {
-            "base": str(Path.home() / ".openclaw/agents"),
-            "pattern": "*/sessions/*.jsonl",
-            "exclude": ["trajectory", "lock", "corrupt"],
-            "extract_from": "message.content"
-        },
-        "claude": {
-            "base": str(Path.home() / ".claude/projects"),
-            "pattern": "*.jsonl",
-            "exclude": ["tool-results"],
-            "extract_from": "top_level"
-        },
-        "opencode": {
-            "base": str(Path.home() / ".opencode"),
-            "pattern": "sessions/*.jsonl",
-            "exclude": [],
-            "extract_from": "message.content"
-        }
+# Agent configurations
+AGENT_SOURCES = {
+    "openclaw": {
+        "base": Path.home() / ".openclaw/agents",
+        "pattern": "*/sessions/*.jsonl",
+        "exclude": ["trajectory", "lock", "corrupt"],
+        "extract_from": "message.content"
+    },
+    "claude": {
+        "base": Path.home() / ".claude/projects/-home-grey",
+        "pattern": "*.jsonl",
+        "exclude": ["tool-results"],
+        "extract_from": "top_level"
+    },
+    "opencode": {
+        "base": Path.home() / ".opencode",
+        "pattern": "sessions/*.jsonl",
+        "exclude": [],
+        "extract_from": "message.content"
     }
+}
 
 def get_platform_from_path(path, source_name):
     """Extract platform/agent name from file path"""

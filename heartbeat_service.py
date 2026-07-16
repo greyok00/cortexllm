@@ -19,9 +19,9 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional
 
-# Paths — configurable via env vars, defaults to ~/.config/cortexllm
-CORTEXLLM_DIR = Path(os.environ.get("CORTEXLLM_DIR", str(Path.home() / ".config/cortexllm")))
-SESSIONS_DIR = Path(os.environ.get("CORTEXLLM_SESSIONS_DIR", str(CORTEXLLM_DIR / "sessions")))
+# Paths - OpenClaw gateway sessions
+SESSIONS_DIR = Path.home() / ".openclaw/agents/brain/sessions"
+CORTEXLLM_DIR = Path.home() / ".config/cortexllm"
 STATE_FILE = CORTEXLLM_DIR / "heartbeat_state.json"
 HEALTH_FILE = CORTEXLLM_DIR / "context_health.json"
 
@@ -182,7 +182,6 @@ def run_heartbeat() -> dict:
     result.update(health)
 
     # Write health status (advisory only)
-    CORTEXLLM_DIR.mkdir(parents=True, exist_ok=True)
     HEALTH_FILE.write_text(json.dumps({
         "timestamp": result["timestamp"],
         "status": result["status"],

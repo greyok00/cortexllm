@@ -11,8 +11,8 @@ import fcntl
 from pathlib import Path
 from datetime import datetime, timedelta
 
-# Paths — override via CORTEXLLM_DIR env var
-CORTEXLLM_ROOT = Path(os.environ.get("CORTEXLLM_DIR", str(Path.home() / ".config/cortexllm")))
+# Paths
+CORTEXLLM_ROOT = Path.home() / ".config/cortexllm"
 HOT_OPENCLAW = CORTEXLLM_ROOT / "memory/hot/openclaw.json"
 HOT_OPCODE = CORTEXLLM_ROOT / "memory/hot/opencode.json"
 HOT_CLAUDE = CORTEXLLM_ROOT / "memory/hot/claude.json"
@@ -396,7 +396,7 @@ def archive_to_cold(messages, session_id, platform=None):
 
 def read_inbox():
     """Read messages from OpenClaw inbox (sent from CortexLLM TUI)"""
-    inbox_dir = Path(os.environ.get("CORTEXLLM_INBOX_DIR", str(Path.home() / ".config/cortexllm" / "inbox")))
+    inbox_dir = Path.home() / ".openclaw" / "inbox"
     if not inbox_dir.exists():
         return []
 

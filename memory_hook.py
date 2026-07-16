@@ -5,23 +5,22 @@ No gateway required for session management
 Writes directly to ~/.config/cortexllm/memory/
 """
 import sys
-import os
 import json
 from pathlib import Path
 from datetime import datetime
 
-# Import CortexLLM Memory Manager — add this directory and optional env path
-for _p in [str(Path(__file__).parent), os.environ.get("CORTEXLLM_MODULE_PATH", "")]:
-    if _p and _p not in sys.path:
+# Import CortexClaw Memory Manager (try new path first, then old)
+for _p in [str(Path.home() / ".cortexclaw"), str(Path.home() / ".openclaw/cortexllm"), str(Path.home() / ".openclaw"), str(Path.home() / ".local/bin")]:
+    if _p not in sys.path:
         sys.path.insert(0, _p)
 from memory_manager import manager
 
 class MemoryHook:
     """Direct CortexLLM integration - no gateway needed"""
 
-    # Optional content filter — comma-separated terms in CORTEXLLM_BANNED_TERMS
-    # are never saved to memory. Empty by default (no filtering).
-    BANNED_TERMS = [t.strip() for t in os.environ.get("CORTEXLLM_BANNED_TERMS", "").split(",") if t.strip()]
+    # Banned content - never save messages about these sites
+    BANNED_TERMS = ["freecash", "quickrewards", "taskpulse", "2captcha",
+                    "freecash.com", "quickrewards.net", "taskpul.se"]
 
     def __init__(self, platform: str = "openclaw"):
         self.platform = platform
@@ -95,3 +94,4 @@ class MemoryHook:
 
 # Auto-load hook
 hook = MemoryHook()
+print("✓ OpenClaw using CortexLLM memory directly - no gateway required")
