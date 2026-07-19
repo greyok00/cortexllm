@@ -1,11 +1,10 @@
 {
   "mcpServers": {
     "cortexllm": {
-      "command": "python3",
-      "args": ["/home/grey/.openclaw/cortexllm/cortexllm_mcp_server.py"],
+      "command": "sh",
+      "args": ["-c", "python3 \"$HOME/.openclaw/cortexllm/cortexllm_mcp_server.py\""],
       "env": {
-        "PYTHONPATH": "/home/grey/.openclaw/cortexllm",
-        "HOME": "/home/grey"
+        "PYTHONPATH": "$HOME/.openclaw/cortexllm"
       },
       "description": "CortexLLM Unified Memory System - Universal memory for all AI agents",
       "capabilities": [
@@ -60,7 +59,7 @@
       "command": "npx",
       "args": ["-y", "firecrawl-mcp"],
       "env": {
-        "FIRECRAWL_API_KEY": "fc-cfe8f05b0dd9449eb173dce5c8c06788"
+        "FIRECRAWL_API_KEY": "${FIRECRAWL_API_KEY}"
       },
       "description": "Web scraping, search, and crawl - extract data from any website",
       "capabilities": [

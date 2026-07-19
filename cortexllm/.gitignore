@@ -1,21 +1,30 @@
+# CortexLLM repo - ONLY allow these specific files
+# Everything else is ignored
+
+/*
+
+# Allow core cortexllm files
+!/README.md
+!/LICENSE
+!/.gitignore
+!/cortexllm_db.py
+!/cortexllm_mcp_server.py
+!/cortexllm_models.py
+!/memory_manager.py
+!/memory_hook.py
+!/memory-tools.py
+!/heartbeat_service.py
+!/save-all-sessions.py
+!/anti_hallucination.py
+!/mcp-server-config.json
+
 # Python
 __pycache__/
 *.pyc
 
-# Memory data
+# Memory data - never commit
 **/memory/
 **/state.json
 **/cortexllm.db
 **/cortexllm.db-wal
 **/cortexllm.db-shm
-
-# OS
-.DS_Store
-*.tmp
-
-# Sensitive data
-**/escort_*
-**/greek_results*
-**/hotspot_*
-**/scrape_*
-**/tts-api*
