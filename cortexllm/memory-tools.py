@@ -20,6 +20,10 @@ WARM_MEMORY = CORTEXLLM_ROOT / "memory/warm/per_profile.json"
 COLD_MEMORY_DIR = CORTEXLLM_ROOT / "memory/cold"
 STATE_FILE = CORTEXLLM_ROOT / "memory/state.json"
 
+# Memory limits
+MAX_WARM_ENTRIES = 50  # Max warm memory messages (was 40, now 50 hard cap)
+MAX_HOT_ENTRIES = 50   # Max hot memory messages per platform
+
 # Platform identification
 PLATFORM = "openclaw"  # Set via env or argument: openclaw|opencode|claude
 
@@ -215,7 +219,7 @@ def save_warm(messages, platform=None):
     plat = platform or get_platform()
     
     # Keep more messages in warm since it's merged from both platforms
-    warm_messages = messages[-40:] if len(messages) > 40 else messages
+    warm_messages = messages[-MAX_WARM_ENTRIES:] if len(messages) > MAX_WARM_ENTRIES else messages
     
     output = {
         "platform": "per_profile",
@@ -228,6 +232,66 @@ def save_warm(messages, platform=None):
         json.dump(output, f, indent=2)
         fcntl.flock(f.fileno(), fcntl.LOCK_UN)
     tmp.replace(WARM_MEMORY)
+
+def compress_cold_memory():
+    """Rewrite cold memory files to compact format (single-line, no metadata, strip long fields)."""
+    count = 0
+    for f in sorted(COLD_MEMORY_DIR.glob("*.json")):
+        try:
+            data = json.loads(f.read_text())
+            if not isinstance(data, dict):
+                continue
+            entries = data.get("entries", [])
+            if not entries:
+                continue
+            compressed = []
+            for e in entries:
+                if not isinstance(e, dict):
+                    continue
+                collapsed = {k: v for k, v in e.items()
+                            if k not in ('id', 'last_updated', 'created_at')}
+                for k, v in collapsed.items():
+                    if isinstance(v, list) and len(v) > 8:
+                        collapsed[k] = v[:8] + [f'+{len(v)-8} more']
+                    elif isinstance(v, str) and len(v) > 200:
+                        collapsed[k] = v[:200] + '...'
+                compressed.append(collapsed)
+
+            data["entries"] = compressed
+            data["last_updated"] = datetime.now().isoformat()
+
+            tmp = f.with_suffix('.tmp')
+            with open(tmp, 'w') as f_out:
+                json.dump(data, f_out, indent=2)
+            tmp.replace(f)
+            count += 1
+        except Exception:
+            pass
+    return count
+
+
+def get_on_demand_keywords():
+    """Get all @on_demand keywords from cold memory entries."""
+    keywords = set()
+    cold_dir = Path.home() / ".cortexclaw/memory/cold"
+    if not cold_dir.exists():
+        return keywords
+    for f in sorted(cold_dir.glob("*.json")):
+        try:
+            data = json.loads(f.read_text())
+            entries = data.get("entries", [])
+            for e in entries:
+                if isinstance(e, dict):
+                    kw = e.get("on_demand", "")
+                    if kw:
+                        if isinstance(kw, list):
+                            keywords.update(k.lower() for k in kw)
+                        else:
+                            keywords.add(str(kw).lower())
+        except Exception:
+            pass
+    return keywords
+
 
 def md_to_message(content, is_user=False, platform=None):
     """Convert markdown content to CortexLLM message format"""
