@@ -16,6 +16,7 @@
 !/heartbeat_service.py
 !/save-all-sessions.py
 !/anti_hallucination.py
+!/prompt_pruner.py
 !/mcp-server-config.json
 
 # Python
