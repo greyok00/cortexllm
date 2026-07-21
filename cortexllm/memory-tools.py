@@ -213,17 +213,43 @@ def load_warm():
         return data.get("messages", [])
     return data
 
+def prune_warm_messages(messages):
+    """Deduplicate and compress warm messages before saving.
+    Strips verbose fields, deduplicates by normalized content, keeps newest."""
+    seen = set()
+    deduped = []
+    for m in reversed(messages):  # newest first
+        if not isinstance(m, dict):
+            continue
+        content = m.get("content", m.get("Content", ""))
+        norm = content.strip().lower()[:200] if content else ""
+        if norm and norm in seen:
+            continue
+        if norm:
+            seen.add(norm)
+        # Strip verbose fields, keep essentials
+        slim = {
+            "role": "user" if m.get("IsUser", m.get("role", "")) == "user" else "assistant",
+            "content": content[:500] if len(content) > 500 else content,
+            "timestamp": m.get("timestamp", m.get("Time", m.get("time", ""))),
+            "platform": m.get("platform", m.get("Platform", "?")),
+        }
+        deduped.append(slim)
+    deduped.reverse()  # back to chronological
+    return deduped[-MAX_WARM_ENTRIES:]
+
+
 def save_warm(messages, platform=None):
-    """Save warm memory (dict format)"""
+    """Save warm memory (dict format) with dedup and compression"""
     ensure_dirs()
     plat = platform or get_platform()
-    
-    # Keep more messages in warm since it's merged from both platforms
-    warm_messages = messages[-MAX_WARM_ENTRIES:] if len(messages) > MAX_WARM_ENTRIES else messages
-    
+
+    # Prune: dedup, strip verbose fields, cap
+    pruned = prune_warm_messages(messages)
+
     output = {
         "platform": "per_profile",
-        "messages": warm_messages
+        "messages": pruned
     }
     
     tmp = WARM_MEMORY.with_suffix('.tmp')
