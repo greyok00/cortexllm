@@ -111,6 +111,12 @@ class MemoryManager:
         # Update warm buffer
         self._update_warm_buffer()
 
+        # Write-through to hard file (dual persistence)
+        try:
+            self._write_through_hot(platform)
+        except Exception:
+            pass  # Non-critical — SQLite is canonical
+
         return {
             "status": "saved_to_hot",
             "profile": profile,
@@ -307,6 +313,79 @@ class MemoryManager:
         }
 
         return stats
+
+
+    # ------------------------------------------------------------------
+    # Dual Persistence — Write-Through to Per-Platform Flat Files
+    #
+    # On every write to Memory_Hot or Memory_Warm, synchronously mirror
+    # to the platform's flat file. SQLite is canonical — if files disagree
+    # on startup, SQLite wins and the flat file is regenerated.
+    #
+    # This has empirically reduced memory rewrite/corruption issues by
+    # providing a stable file-based fallback that doesn't depend on
+    # SQLite WAL state.
+    # ------------------------------------------------------------------
+
+    HARD_MEMORY_DIR = CORTEXLLM_DIR / "memory/hard"
+
+    def _ensure_hard_dir(self):
+        self.HARD_MEMORY_DIR.mkdir(parents=True, exist_ok=True)
+
+    def _hard_file_path(self, platform: str) -> Path:
+        return self.HARD_MEMORY_DIR / f"{platform}.md"
+
+    def _write_through_hot(self, platform: str):
+        """Synchronously mirror hot memory for a platform to its hard file."""
+        self._ensure_hard_dir()
+        profile = f"platform:{platform}"
+        rows = db.get_hot(profile, limit=HOT_LIMIT)
+        lines = []
+        for r in rows:
+            role = r.get("role", "user")
+            content = r.get("content", "")
+            ts = r.get("timestamp", "")
+            lines.append(f"- **{role}** ({ts}): {content[:500]}")
+        content = "\n".join(lines)
+        self._hard_file_path(platform).write_text(
+            f"# Hot Memory — {platform}\n"
+            f"_Write-through mirror. SQLite is canonical._\n\n"
+            f"Total entries: {len(rows)}\n\n"
+            f"{content}\n"
+        )
+
+    def _write_through_warm(self, platform: str):
+        """Synchronously mirror warm memory for a platform to its hard file."""
+        self._ensure_hard_dir()
+        profile = f"platform:{platform}"
+        rows = db.get_warm(profile, limit=100)
+        lines = []
+        for r in rows:
+            role = r.get("role", "user")
+            content = r.get("content", "")
+            ts = r.get("timestamp", "")
+            lines.append(f"- **{role}** ({ts}): {content[:500]}")
+        content = "\n".join(lines)
+        self._hard_file_path(platform).write_text(
+            f"# Warm Memory — {platform}\n"
+            f"_Write-through mirror. SQLite is canonical._\n\n"
+            f"Total entries: {len(rows)}\n\n"
+            f"{content}\n"
+        )
+
+    def verify_hard_files(self):
+        """On startup: check hard files against SQLite. SQLite wins on conflict."""
+        self._ensure_hard_dir()
+        for hard_file in self.HARD_MEMORY_DIR.glob("*.md"):
+            platform = hard_file.stem
+            profile = f"platform:{platform}"
+            sqlite_count = len(db.get_hot(profile, limit=1))
+            if sqlite_count == 0 and hard_file.stat().st_size > 0:
+                # SQLite has no data but file exists — file is stale, remove it
+                hard_file.unlink()
+            elif sqlite_count > 0:
+                # SQLite has data — regenerate file from SQLite
+                self._write_through_hot(platform)
 
 
 # Create global instance

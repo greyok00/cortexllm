@@ -17,7 +17,11 @@
 !/save-all-sessions.py
 !/anti_hallucination.py
 !/prompt_pruner.py
+!/context_pruner.py
+!/dom_pruner.py
+!/model_router.py
 !/mcp-server-config.json
+!/hard-memory-templates/
 
 # Python
 __pycache__/
