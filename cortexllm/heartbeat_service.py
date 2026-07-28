@@ -148,7 +148,7 @@ def clean_stale_locks() -> int:
 
 
 def run_heartbeat() -> dict:
-    """Main heartbeat - read-only health check."""
+    """Main heartbeat - read-only health check + wiki reconciliation pass."""
     result = {
         "timestamp": datetime.now().isoformat(),
         "healthy": True,
@@ -159,7 +159,23 @@ def run_heartbeat() -> dict:
         "new_recommended": False,
         "warnings": [],
         "locks_cleaned": 0,
+        "contradictions": 0,
     }
+
+    # Wiki reconciliation pass: surface unresolved contradictions
+    try:
+        from cortexllm_db import db
+        contradictions = db.get_unresolved_contradictions(limit=20)
+        if contradictions:
+            result["contradictions"] = len(contradictions)
+            result["warnings"].append(
+                f"WIKI: {len(contradictions)} unresolved contradiction(s) "
+                f"— run wiki_reconcile to resolve"
+            )
+    except ImportError:
+        pass  # cortexllm_db not available in this context
+    except Exception as e:
+        result["warnings"].append(f"WIKI reconciliation check failed: {e}")
 
     # Clean stale locks (safe operation)
     result["locks_cleaned"] = clean_stale_locks()

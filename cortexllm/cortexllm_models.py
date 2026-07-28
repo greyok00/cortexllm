@@ -82,6 +82,37 @@ class ColdFact(BaseModel):
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
+class WikiFact(BaseModel):
+    """A structured wiki fact with provenance and conflict tracking."""
+    entity: str = Field(..., min_length=1, description="Subject of the fact")
+    attribute: str = Field(..., min_length=1, description="Specific attribute")
+    claim: str = Field(..., min_length=1, description="The claim/statement")
+    profile: str = Field(default="shared")
+    category: str = Field(default="wiki")
+    evidence: List[str] = Field(default_factory=list, description="Supporting evidence URLs or references")
+    provenance: str = Field(default="unknown", description="Platform/session that wrote it: 'openclaw' or 'claude'")
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+    source: str = Field(default="unknown")
+    tags: List[str] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+
+class WikiSearchResult(BaseModel):
+    """A wiki search result with freshness scoring."""
+    id: int
+    entity: str
+    attribute: str
+    claim: str
+    provenance: str
+    confidence: float
+    freshness_score: float
+    stale: bool
+    evidence: List[str] = Field(default_factory=list)
+    timestamp: str
+    last_verified: Optional[str] = None
+
+
 class Checkpoint(BaseModel):
     """A session restore point."""
     profile: str = Field(..., min_length=1)

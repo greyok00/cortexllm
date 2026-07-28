@@ -6,9 +6,15 @@ Tables:
   - Checkpoints:     Session restore points (profile, timestamp, last_command, context)
   - Memory_Hot:      FIFO per-profile, capped at 300 rows (user prompts + responses)
   - Memory_Warm:     Per-profile context buffer, no hard cap (managed by distillation)
-  - Memory_Cold:     Distilled facts only — source, confidence, tags required
+  - Memory_Cold:     Distilled facts + wiki layer — claim, evidence, provenance, conflict tracking
   - Active_Tasks:    Currently running tasks per profile
   - Logs:            Event log for observability
+
+Wiki layer (inside Memory_Cold):
+  - entity/attribute/provenance composite unique key for deterministic UPSERT conflict resolution
+  - claim + evidence (JSON array) for structured knowledge
+  - contradiction_flag + superseded_by for conflict tracking (never hard-delete)
+  - last_verified + decay-weighted freshness scoring at query time
 
 Connection model:
   - Exactly one writer connection (owned by the Dispatcher)
@@ -19,13 +25,16 @@ Connection model:
 import json
 import sqlite3
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 DB_DIR = Path.home() / ".config/cortexllm"
 DB_PATH = DB_DIR / "cortexllm.db"
 MEMORY_DIR = DB_DIR / "memory"
+
+# Default freshness window: facts not re-verified within this many days are flagged stale
+FRESHNESS_WINDOW_DAYS = 30
 
 # ---------------------------------------------------------------------------
 # Schema
@@ -73,15 +82,24 @@ CREATE TABLE IF NOT EXISTS Memory_Warm (
 );
 
 CREATE TABLE IF NOT EXISTS Memory_Cold (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    profile     TEXT    NOT NULL,
-    timestamp   TEXT    NOT NULL DEFAULT (datetime('now')),
-    category    TEXT    NOT NULL,
-    fact        TEXT    NOT NULL,
-    source      TEXT    NOT NULL DEFAULT 'unknown',
-    confidence  REAL    NOT NULL DEFAULT 0.5 CHECK (confidence >= 0 AND confidence <= 1),
-    tags        TEXT    DEFAULT '[]',
-    metadata    TEXT    DEFAULT '{}'
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile             TEXT    NOT NULL,
+    timestamp           TEXT    NOT NULL DEFAULT (datetime('now')),
+    category            TEXT    NOT NULL,
+    fact                TEXT    NOT NULL,
+    source              TEXT    NOT NULL DEFAULT 'unknown',
+    confidence          REAL    NOT NULL DEFAULT 0.5 CHECK (confidence >= 0 AND confidence <= 1),
+    tags                TEXT    DEFAULT '[]',
+    metadata            TEXT    DEFAULT '{}',
+    -- Wiki layer columns (added via migration, nullable for backward compat)
+    entity              TEXT,
+    attribute           TEXT,
+    claim               TEXT,
+    evidence            TEXT    DEFAULT '[]',
+    provenance          TEXT    DEFAULT 'unknown',
+    contradiction_flag  INTEGER DEFAULT 0,
+    superseded_by       INTEGER DEFAULT NULL,
+    last_verified       TEXT
 );
 
 CREATE TABLE IF NOT EXISTS Active_Tasks (
@@ -142,7 +160,53 @@ CREATE INDEX IF NOT EXISTS idx_cold_profile ON Memory_Cold(profile, category);
 CREATE INDEX IF NOT EXISTS idx_tasks_profile ON Active_Tasks(profile, status);
 CREATE INDEX IF NOT EXISTS idx_logs_profile ON Logs(profile, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_checkpoints_profile ON Checkpoints(profile, timestamp DESC);
+
+-- Wiki layer indexes
+CREATE INDEX IF NOT EXISTS idx_cold_entity ON Memory_Cold(entity, attribute);
+CREATE INDEX IF NOT EXISTS idx_cold_provenance ON Memory_Cold(provenance);
+CREATE INDEX IF NOT EXISTS idx_cold_contradiction ON Memory_Cold(contradiction_flag);
+CREATE INDEX IF NOT EXISTS idx_cold_superseded ON Memory_Cold(superseded_by);
+CREATE INDEX IF NOT EXISTS idx_cold_last_verified ON Memory_Cold(last_verified);
 """
+
+# ---------------------------------------------------------------------------
+# Migration: add wiki columns to existing Memory_Cold table
+# ---------------------------------------------------------------------------
+
+MIGRATE_WIKI_COLUMNS = [
+    ("entity", "TEXT"),
+    ("attribute", "TEXT"),
+    ("claim", "TEXT"),
+    ("evidence", "TEXT DEFAULT '[]'"),
+    ("provenance", "TEXT DEFAULT 'unknown'"),
+    ("contradiction_flag", "INTEGER DEFAULT 0"),
+    ("superseded_by", "INTEGER DEFAULT NULL"),
+    ("last_verified", "TEXT"),
+]
+
+MIGRATE_WIKI_INDEXES = [
+    "CREATE INDEX IF NOT EXISTS idx_cold_entity ON Memory_Cold(entity, attribute)",
+    "CREATE INDEX IF NOT EXISTS idx_cold_provenance ON Memory_Cold(provenance)",
+    "CREATE INDEX IF NOT EXISTS idx_cold_contradiction ON Memory_Cold(contradiction_flag)",
+    "CREATE INDEX IF NOT EXISTS idx_cold_superseded ON Memory_Cold(superseded_by)",
+    "CREATE INDEX IF NOT EXISTS idx_cold_last_verified ON Memory_Cold(last_verified)",
+]
+
+
+def _run_migration(conn: sqlite3.Connection):
+    """Add wiki columns to existing Memory_Cold table if they don't exist."""
+    cursor = conn.execute("PRAGMA table_info(Memory_Cold)")
+    existing = {row[1] for row in cursor.fetchall()}
+    for col_name, col_type in MIGRATE_WIKI_COLUMNS:
+        if col_name not in existing:
+            conn.execute(f"ALTER TABLE Memory_Cold ADD COLUMN {col_name} {col_type}")
+    for idx_sql in MIGRATE_WIKI_INDEXES:
+        try:
+            conn.execute(idx_sql)
+        except sqlite3.OperationalError:
+            pass  # Index already exists
+    conn.commit()
+
 
 # ---------------------------------------------------------------------------
 # Connection Manager
@@ -153,7 +217,7 @@ class Database:
 
     Usage:
         db = Database()
-        db.initialize()              # Create schema
+        db.initialize()              # Create schema + run migrations
         db.writer.execute(...)       # One writer connection
         with db.reader() as conn:    # Read-only connections
             conn.execute(...)
@@ -191,6 +255,7 @@ class Database:
             self._writer = sqlite3.connect(str(DB_PATH), check_same_thread=False)
             self._writer.row_factory = sqlite3.Row
             self._writer.executescript(SCHEMA_SQL)
+            _run_migration(self._writer)
             self._writer.commit()
 
     @property
@@ -291,7 +356,20 @@ class Database:
         return [dict(r) for r in rows]
 
     # ------------------------------------------------------------------
-    # Memory_Cold (distilled facts only)
+    # Memory_Cold — Wiki Layer (distilled facts + structured knowledge)
+    # ------------------------------------------------------------------
+    #
+    # The wiki layer extends Memory_Cold with structured knowledge fields:
+    #   entity, attribute, claim, evidence (JSON array), provenance,
+    #   contradiction_flag, superseded_by, last_verified.
+    #
+    # Conflict resolution uses SQLite UPSERT keyed on (entity, attribute, provenance).
+    # On conflict: the older row is flagged (contradiction_flag=1) and its
+    # superseded_by points to the new row. Both rows are preserved for provenance.
+    #
+    # Freshness is computed at query time via decay-weighted scoring based on
+    # last_verified. Facts not re-verified within FRESHNESS_WINDOW_DAYS are
+    # flagged as stale but never auto-deleted.
     # ------------------------------------------------------------------
 
     def add_to_cold(self, profile: str, category: str, fact: str,
@@ -308,6 +386,123 @@ class Database:
         w.commit()
         return cursor.lastrowid
 
+    # ------------------------------------------------------------------
+    # Wiki: add structured claim with UPSERT conflict resolution
+    # ------------------------------------------------------------------
+
+    def add_wiki_fact(self, entity: str, attribute: str, claim: str,
+                      profile: str = "shared", category: str = "wiki",
+                      evidence: list = None, provenance: str = "unknown",
+                      confidence: float = 0.5, source: str = "unknown",
+                      tags: list = None, metadata: dict = None) -> int:
+        """Add a wiki fact with UPSERT conflict resolution.
+
+        Keyed on (entity, attribute, provenance). On conflict:
+        - The existing row is flagged (contradiction_flag=1)
+        - Its superseded_by points to the new row
+        - Both rows are preserved for provenance
+        """
+        w = self.writer
+        now = datetime.now().isoformat()
+
+        # First: flag any existing non-flagged row for this key as contradicted
+        w.execute(
+            "UPDATE Memory_Cold SET contradiction_flag = 1, "
+            "  metadata = json_set(COALESCE(metadata, '{}'), '$.superseded_at', ?) "
+            "WHERE entity = ? AND attribute = ? AND provenance = ? AND contradiction_flag = 0",
+            (now, entity, attribute, provenance)
+        )
+        # Get the ID of the row we just flagged (if any)
+        old_row = w.execute(
+            "SELECT id FROM Memory_Cold "
+            "WHERE entity = ? AND attribute = ? AND provenance = ? AND contradiction_flag = 1 "
+            "  AND json_extract(COALESCE(metadata, '{}'), '$.superseded_at') = ? "
+            "ORDER BY timestamp DESC LIMIT 1",
+            (entity, attribute, provenance, now)
+        ).fetchone()
+        old_id = old_row["id"] if old_row else None
+
+        # Insert the new row
+        cursor = w.execute(
+            "INSERT INTO Memory_Cold "
+            "  (profile, category, fact, source, confidence, tags, metadata, "
+            "   entity, attribute, claim, evidence, provenance, last_verified) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (profile, category, claim, source, confidence,
+             json.dumps(tags or []), json.dumps(metadata or {}),
+             entity, attribute, claim,
+             json.dumps(evidence or []), provenance, now)
+        )
+        new_id = cursor.lastrowid
+
+        # If we flagged an old row, point its superseded_by at the new row
+        if old_id:
+            w.execute(
+                "UPDATE Memory_Cold SET superseded_by = ? WHERE id = ?",
+                (new_id, old_id)
+            )
+
+        w.commit()
+        return new_id
+
+    def get_wiki_fact(self, entity: str, attribute: str,
+                      provenance: str = None) -> Optional[Dict]:
+        """Get the current (non-contradicted) wiki fact for an entity/attribute.
+
+        If provenance is specified, returns the fact for that platform only.
+        Otherwise returns the most recent across all platforms.
+        """
+        if provenance:
+            rows = self.reader().execute(
+                "SELECT * FROM Memory_Cold "
+                "WHERE entity = ? AND attribute = ? AND provenance = ? AND contradiction_flag = 0 "
+                "ORDER BY timestamp DESC LIMIT 1",
+                (entity, attribute, provenance)
+            ).fetchall()
+        else:
+            rows = self.reader().execute(
+                "SELECT * FROM Memory_Cold "
+                "WHERE entity = ? AND attribute = ? AND contradiction_flag = 0 "
+                "ORDER BY timestamp DESC LIMIT 1",
+                (entity, attribute)
+            ).fetchall()
+        return dict(rows[0]) if rows else None
+
+    def search_wiki(self, query: str, limit: int = 20) -> List[Dict]:
+        """Search wiki facts by entity, attribute, or claim text.
+
+        Results are ranked by a decay-weighted freshness score:
+          score = confidence * decay_factor
+          decay_factor = max(0, 1 - (days_since_verified / FRESHNESS_WINDOW_DAYS))
+
+        Facts not verified within FRESHNESS_WINDOW_DAYS are flagged as stale
+        but still returned (with stale=True) — never auto-deleted.
+        """
+        now = datetime.now()
+        like_q = f"%{query}%"
+        rows = self.reader().execute(
+            "SELECT *, "
+            "  CAST(julianday('now') - julianday(COALESCE(last_verified, timestamp)) AS INTEGER) "
+            "    AS days_since_verified "
+            "FROM Memory_Cold "
+            "WHERE contradiction_flag = 0 AND superseded_by IS NULL "
+            "  AND (entity LIKE ? OR attribute LIKE ? OR claim LIKE ? OR fact LIKE ?) "
+            "ORDER BY timestamp DESC LIMIT ?",
+            (like_q, like_q, like_q, like_q, limit)
+        ).fetchall()
+
+        results = []
+        for r in rows:
+            d = dict(r)
+            days = d.pop("days_since_verified", FRESHNESS_WINDOW_DAYS)
+            decay = max(0.0, 1.0 - (days / FRESHNESS_WINDOW_DAYS))
+            d["freshness_score"] = round(d.get("confidence", 0.5) * decay, 4)
+            d["stale"] = days > FRESHNESS_WINDOW_DAYS
+            results.append(d)
+
+        results.sort(key=lambda x: x["freshness_score"], reverse=True)
+        return results
+
     def get_cold(self, profile: str, category: str = None, limit: int = 50) -> List[Dict]:
         """Get Memory_Cold facts for a profile, optionally filtered by category."""
         if category:
@@ -320,6 +515,84 @@ class Database:
                 "SELECT * FROM Memory_Cold WHERE profile = ? ORDER BY timestamp DESC LIMIT ?",
                 (profile, limit)
             ).fetchall()
+        return [dict(r) for r in rows]
+
+    # ------------------------------------------------------------------
+    # Conflict reconciliation
+    # ------------------------------------------------------------------
+
+    def get_unresolved_contradictions(self, limit: int = 50) -> List[Dict]:
+        """Get all rows flagged as contradicted whose superseder is also contradicted,
+        forming a chain that needs reconciliation."""
+        rows = self.reader().execute(
+            "SELECT c1.*, c2.claim AS superseder_claim, c2.confidence AS superseder_confidence "
+            "FROM Memory_Cold c1 "
+            "LEFT JOIN Memory_Cold c2 ON c1.superseded_by = c2.id "
+            "WHERE c1.contradiction_flag = 1 "
+            "  AND (c2.contradiction_flag = 1 OR c2.id IS NULL) "
+            "ORDER BY c1.timestamp DESC LIMIT ?",
+            (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def reconcile_contradiction(self, entity: str, attribute: str,
+                                winning_id: int, provenance: str = None) -> bool:
+        """Resolve a contradiction chain by marking the winner as authoritative
+        and clearing contradiction_flag on all other rows in the chain.
+
+        Returns True if any rows were updated.
+        """
+        w = self.writer
+        # Clear contradiction_flag on the winner
+        w.execute(
+            "UPDATE Memory_Cold SET contradiction_flag = 0, "
+            "  metadata = json_set(COALESCE(metadata, '{}'), '$.reconciled_at', datetime('now')) "
+            "WHERE id = ?",
+            (winning_id,)
+        )
+        # Mark all other rows in this chain as resolved (superseded_by points to winner)
+        if provenance:
+            w.execute(
+                "UPDATE Memory_Cold SET "
+                "  metadata = json_set(COALESCE(metadata, '{}'), '$.reconciled_by', ?) "
+                "WHERE entity = ? AND attribute = ? AND provenance = ? AND id != ?",
+                (winning_id, entity, attribute, provenance, winning_id)
+            )
+        else:
+            w.execute(
+                "UPDATE Memory_Cold SET "
+                "  metadata = json_set(COALESCE(metadata, '{}'), '$.reconciled_by', ?) "
+                "WHERE entity = ? AND attribute = ? AND id != ?",
+                (winning_id, entity, attribute, winning_id)
+            )
+        w.commit()
+        return True
+
+    # ------------------------------------------------------------------
+    # Freshness: verify a fact (touch last_verified)
+    # ------------------------------------------------------------------
+
+    def verify_fact(self, fact_id: int) -> bool:
+        """Update last_verified to now for a fact. Returns True if updated."""
+        w = self.writer
+        cursor = w.execute(
+            "UPDATE Memory_Cold SET last_verified = datetime('now') WHERE id = ?",
+            (fact_id,)
+        )
+        w.commit()
+        return cursor.rowcount > 0
+
+    def get_stale_facts(self, window_days: int = None, limit: int = 100) -> List[Dict]:
+        """Get facts not verified within the window. Never auto-deletes."""
+        window = window_days or FRESHNESS_WINDOW_DAYS
+        rows = self.reader().execute(
+            "SELECT * FROM Memory_Cold "
+            "WHERE contradiction_flag = 0 AND superseded_by IS NULL "
+            "  AND (last_verified IS NULL "
+            "    OR julianday('now') - julianday(last_verified) > ?) "
+            "ORDER BY last_verified ASC NULLS FIRST LIMIT ?",
+            (window, limit)
+        ).fetchall()
         return [dict(r) for r in rows]
 
     # ------------------------------------------------------------------
