@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "cortexllm": {
+      "command": "{{CORTEXLLM_MCP_CMD}}"
+    }
+  }
+}
