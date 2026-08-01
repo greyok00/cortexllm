@@ -2,11 +2,8 @@
   "mcpServers": {
     "cortexllm": {
       "command": "sh",
-      "args": ["-c", "python3 \"$HOME/.openclaw/cortexllm/cortexllm_mcp_server.py\""],
-      "env": {
-        "PYTHONPATH": "$HOME/.openclaw/cortexllm"
-      },
-      "description": "CortexLLM Unified Memory System - Universal memory for all AI agents",
+      "args": ["-c", "exec \"$HOME/.openclaw/cortexllm/start-cortexllm-mcp.sh\""],
+      "description": "CortexLLM Unified Memory System - Universal memory for all AI agents (wrapper sets PYTHONPATH)",
       "capabilities": [
         "memory_read",
         "memory_write",

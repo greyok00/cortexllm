@@ -255,7 +255,11 @@ def verify_service_running(service_name: str) -> VerificationResult:
             timeout=5
         )
         if pgrep.returncode != 0:
-            result.add_warning(f"Process '{config['process']}' not found")
+            result.add_verification(
+                f"Service {service_name} process",
+                False,
+                f"Process '{config['process']}' not found"
+            )
         else:
             result.add_verification(
                 f"Service {service_name} process",
@@ -263,7 +267,11 @@ def verify_service_running(service_name: str) -> VerificationResult:
                 f"PID: {pgrep.stdout.strip()}"
             )
     except Exception as e:
-        result.add_warning(f"Could not check process: {e}")
+        result.add_verification(
+            f"Service {service_name} process",
+            False,
+            f"Could not check process: {e}"
+        )
 
     return result
 
@@ -331,7 +339,7 @@ def verify_user_claim(claim: str, context: Dict) -> VerificationResult:
 
     # Check for claims about services
     for service_name in SERVICES:
-        if service_name in claim_lower or "gateway" in claim_lower:
+        if service_name in claim_lower:
             service_result = verify_service_running(service_name)
             result.verifications.extend(service_result.verifications)
             result.warnings.extend(service_result.warnings)
@@ -396,6 +404,7 @@ def verify_before_code(user_prompt: str, context: Optional[Dict] = None) -> Veri
                 result.warnings.extend(cmd_result.warnings)
                 if not cmd_result.passed:
                     result.blocker = f"CLI verification failed: {cmd}"
+                    result.passed = False
 
     # 2. Check browser CDP specifically (common hallucination source)
     browser_keywords = ["browser", "canvas", "webpage", "tab", "cdp", "navigate", "click", "fetch page"]
@@ -437,7 +446,10 @@ def verify_before_code(user_prompt: str, context: Optional[Dict] = None) -> Veri
 
     # Final pass/fail
     if not result.passed:
-        result.blocker = "Verification failed - address issues before code generation"
+        if result.blocker:
+            result.blocker += "; Verification failed - address issues before code generation"
+        else:
+            result.blocker = "Verification failed - address issues before code generation"
 
     return result
 

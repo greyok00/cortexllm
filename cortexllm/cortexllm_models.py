@@ -14,6 +14,18 @@ from pydantic import BaseModel, Field, field_validator
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _strip_and_check(v: str) -> str:
+    """Strip whitespace and reject empty/whitespace-only strings."""
+    stripped = v.strip()
+    if not stripped:
+        raise ValueError("Value cannot be empty or whitespace-only")
+    return stripped
+
+
+# ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
 
@@ -52,6 +64,8 @@ class EventType(str, Enum):
 
 class MemoryMessage(BaseModel):
     """A single message stored in memory (hot/warm)."""
+    model_config = {"extra": "forbid"}
+
     profile: str = Field(default="default", description="Profile scope")
     role: MessageRole = Field(default=MessageRole.USER)
     content: str = Field(..., min_length=1, description="Message content")
@@ -72,6 +86,8 @@ class MemoryMessage(BaseModel):
 
 class ColdFact(BaseModel):
     """A distilled fact stored in cold memory."""
+    model_config = {"extra": "forbid"}
+
     profile: str = Field(default="shared")
     category: str = Field(..., min_length=1)
     fact: str = Field(..., min_length=1)
@@ -81,9 +97,16 @@ class ColdFact(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
 
+    @field_validator("category", "fact", "source")
+    @classmethod
+    def not_empty(cls, v: str) -> str:
+        return _strip_and_check(v)
+
 
 class WikiFact(BaseModel):
     """A structured wiki fact with provenance and conflict tracking."""
+    model_config = {"extra": "forbid"}
+
     entity: str = Field(..., min_length=1, description="Subject of the fact")
     attribute: str = Field(..., min_length=1, description="Specific attribute")
     claim: str = Field(..., min_length=1, description="The claim/statement")
@@ -97,9 +120,16 @@ class WikiFact(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
 
+    @field_validator("entity", "attribute", "claim")
+    @classmethod
+    def not_empty(cls, v: str) -> str:
+        return _strip_and_check(v)
+
 
 class WikiSearchResult(BaseModel):
     """A wiki search result with freshness scoring."""
+    model_config = {"extra": "forbid"}
+
     id: int
     entity: str
     attribute: str
@@ -109,21 +139,39 @@ class WikiSearchResult(BaseModel):
     freshness_score: float
     stale: bool
     evidence: List[str] = Field(default_factory=list)
+    category: str = Field(default="wiki")
+    profile: str = Field(default="shared")
+    tags: List[str] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
     timestamp: str
     last_verified: Optional[str] = None
+
+    @field_validator("entity", "attribute", "claim")
+    @classmethod
+    def not_empty(cls, v: str) -> str:
+        return _strip_and_check(v)
 
 
 class Checkpoint(BaseModel):
     """A session restore point."""
+    model_config = {"extra": "forbid"}
+
     profile: str = Field(..., min_length=1)
     last_command: str = Field(..., min_length=1)
     context: Dict[str, Any] = Field(default_factory=dict)
     session_id: Optional[str] = None
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
 
+    @field_validator("profile", "last_command")
+    @classmethod
+    def not_empty(cls, v: str) -> str:
+        return _strip_and_check(v)
+
 
 class TaskRecord(BaseModel):
     """A tracked task."""
+    model_config = {"extra": "forbid"}
+
     profile: str = Field(..., min_length=1)
     task_id: str = Field(..., min_length=1)
     description: str = Field(..., min_length=1)
@@ -134,9 +182,16 @@ class TaskRecord(BaseModel):
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
+    @field_validator("profile", "task_id", "description")
+    @classmethod
+    def not_empty(cls, v: str) -> str:
+        return _strip_and_check(v)
+
 
 class LogEvent(BaseModel):
     """An observability event."""
+    model_config = {"extra": "forbid"}
+
     profile: str = Field(default="default")
     event_type: EventType
     event_data: Dict[str, Any] = Field(default_factory=dict)
@@ -151,6 +206,8 @@ class LogEvent(BaseModel):
 
 class PreFlightResult(BaseModel):
     """Result of pre-flight gate checks."""
+    model_config = {"extra": "forbid"}
+
     passed: bool = True
     blocked: bool = False
     reason: Optional[str] = None
@@ -164,6 +221,8 @@ class PreFlightResult(BaseModel):
 
 class PostVerifyResult(BaseModel):
     """Result of post-response verification."""
+    model_config = {"extra": "forbid"}
+
     passed: bool = True
     needs_retry: bool = False
     retry_reason: Optional[str] = None
