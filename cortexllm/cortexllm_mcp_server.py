@@ -12,9 +12,10 @@ Provides:
 """
 
 import json
-import sys
 import asyncio
-import os
+import re
+import tempfile
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 from mcp.server import Server
@@ -28,13 +29,55 @@ WARM_DIR = CORTEXLLM_DIR / "memory/warm"
 COLD_DIR = CORTEXLLM_DIR / "memory/cold"
 
 # Import database layer for wiki operations
-from cortexllm_db import db
+try:
+    from cortexllm_db import db
+except ImportError:
+    db = None
 
 # Import model router for memory ops
-from model_router import route_memory_search, route_memory_read
+try:
+    from model_router import route_memory_search, route_memory_read
+except ImportError:
+    route_memory_search = None
+    route_memory_read = None
 
 # Initialize MCP server
 app = Server("cortexllm")
+
+
+def _sanitize_name(name: str) -> str:
+    """Restrict names to safe characters [a-zA-Z0-9_-]"""
+    sanitized = re.sub(r'[^a-zA-Z0-9_-]', '', name)
+    if not sanitized:
+        raise ValueError(f"Name '{name}' contains no valid characters")
+    return sanitized
+
+
+def _safe_path(base_dir: Path, name: str, suffix: str = ".json") -> Path:
+    """Resolve a path and verify it stays under the base directory"""
+    safe_name = _sanitize_name(name)
+    path = (base_dir / f"{safe_name}{suffix}").resolve()
+    base_resolved = base_dir.resolve()
+    if not str(path).startswith(str(base_resolved)):
+        raise ValueError(f"Path traversal detected: {name}")
+    return path
+
+
+def _atomic_write(filepath: Path, data: str):
+    """Write data atomically using temp file + rename (TOCTOU-safe)"""
+    tmp = tempfile.NamedTemporaryFile(
+        mode='w',
+        dir=filepath.parent,
+        suffix='.tmp',
+        delete=False
+    )
+    try:
+        tmp.write(data)
+        tmp.close()
+        Path(tmp.name).rename(filepath)
+    except Exception:
+        Path(tmp.name).unlink(missing_ok=True)
+        raise
 
 
 class CortexLLMMemory:
@@ -47,7 +90,7 @@ class CortexLLMMemory:
 
     def get_hot(self, platform: str = "default") -> list:
         """Get hot memory messages for a platform. Returns list of messages."""
-        hot_file = HOT_DIR / f"{platform}.json"
+        hot_file = _safe_path(HOT_DIR, platform)
         if not hot_file.exists():
             return []
         try:
@@ -68,8 +111,8 @@ class CortexLLMMemory:
 
     def set_hot(self, platform: str, messages: list):
         """Set hot memory for a platform. Always writes dict format."""
-        hot_file = HOT_DIR / f"{platform}.json"
-        hot_file.write_text(json.dumps({
+        hot_file = _safe_path(HOT_DIR, platform)
+        _atomic_write(hot_file, json.dumps({
             "platform": platform,
             "messages": messages
         }, indent=2))
@@ -97,7 +140,7 @@ class CortexLLMMemory:
             if isinstance(data, dict):
                 return data.get("messages", [])
             return data
-        except:
+        except Exception:
             return []
 
     def get_warm_data(self) -> dict:
@@ -109,23 +152,23 @@ class CortexLLMMemory:
     def set_warm(self, messages: list):
         """Set warm memory. Always writes dict format."""
         warm_file = WARM_DIR / "per_profile.json"
-        warm_file.write_text(json.dumps({
+        _atomic_write(warm_file, json.dumps({
             "messages": messages
         }, indent=2))
 
     def set_warm_data(self, data: dict):
         """Set warm memory from full dict."""
         warm_file = WARM_DIR / "per_profile.json"
-        warm_file.write_text(json.dumps(data, indent=2))
+        _atomic_write(warm_file, json.dumps(data, indent=2))
 
     def get_cold(self, category: str = None) -> dict:
         """Get cold storage (permanent knowledge)"""
         if category:
-            cold_file = COLD_DIR / f"{category}.json"
+            cold_file = _safe_path(COLD_DIR, category)
             if cold_file.exists():
                 try:
                     return json.loads(cold_file.read_text())
-                except:
+                except Exception:
                     return {}
             return {}
 
@@ -134,14 +177,14 @@ class CortexLLMMemory:
         for f in COLD_DIR.glob("*.json"):
             try:
                 categories[f.stem] = json.loads(f.read_text())
-            except:
+            except Exception:
                 pass
         return categories
 
     def set_cold(self, category: str, data: dict):
         """Save to cold storage"""
-        cold_file = COLD_DIR / f"{category}.json"
-        cold_file.write_text(json.dumps(data, indent=2))
+        cold_file = _safe_path(COLD_DIR, category)
+        _atomic_write(cold_file, json.dumps(data, indent=2))
 
     def search(self, query: str, limit: int = 10) -> list:
         """Search across all memory tiers"""
@@ -161,7 +204,7 @@ class CortexLLMMemory:
                             "content": content[:200],
                             "relevance": 0.8
                         })
-            except:
+            except Exception:
                 pass
 
         # Search warm memory
@@ -188,7 +231,7 @@ class CortexLLMMemory:
                             "content": knowledge[:200],
                             "relevance": 1.0
                         })
-            except:
+            except Exception:
                 pass
 
         # Sort by relevance
@@ -237,7 +280,7 @@ async def read_resource(uri: str) -> str:
                     all_hot[hot_file.stem] = data.get("messages", [])
                 else:
                     all_hot[hot_file.stem] = data
-            except:
+            except Exception:
                 pass
         return json.dumps(all_hot, indent=2)
 
@@ -528,7 +571,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             category = arguments.get("category", "general")
             try:
                 knowledge = json.loads(content)
-            except:
+            except Exception:
                 knowledge = {"content": content}
 
             data = memory.get_cold(category)
@@ -536,7 +579,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 data = {"category": category, "entries": []}
 
             data["entries"].append({
-                "timestamp": str(asyncio.get_event_loop().time()),
+                "timestamp": datetime.utcnow().isoformat(),
                 "knowledge": knowledge
             })
             memory.set_cold(category, data)
@@ -551,7 +594,10 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         query = arguments.get("query", "")
         limit = arguments.get("limit", 10)
         # Route to small local Ollama model for ranking/filtering
-        results = route_memory_search(query, limit, memory)
+        if route_memory_search is not None:
+            results = route_memory_search(query, limit, memory)
+        else:
+            results = memory.search(query, limit)
         return [TextContent(type="text", text=json.dumps(results, indent=2))]
 
     elif name == "memory_clear":
@@ -560,7 +606,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         if tier == "hot":
             platform = arguments.get("platform")
             if platform:
-                hot_file = HOT_DIR / f"{platform}.json"
+                hot_file = _safe_path(HOT_DIR, platform)
                 if hot_file.exists():
                     hot_file.unlink()
                 result = {"status": "cleared", "platform": platform}
@@ -581,6 +627,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             warm_file = WARM_DIR / "per_profile.json"
             if warm_file.exists():
                 warm_file.unlink()
+            for f in COLD_DIR.glob("*.json"):
+                f.unlink()
             result = {"status": "cleared", "tier": "all"}
 
         else:
@@ -590,6 +638,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
     # Wiki layer tools
     elif name == "wiki_add":
+        if db is None:
+            return [TextContent(type="text", text=json.dumps({"error": "Database layer not available"}, indent=2))]
         entity = arguments["entity"]
         attribute = arguments["attribute"]
         claim = arguments["claim"]
@@ -611,6 +661,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         }, indent=2))]
 
     elif name == "wiki_get":
+        if db is None:
+            return [TextContent(type="text", text=json.dumps({"error": "Database layer not available"}, indent=2))]
         entity = arguments["entity"]
         attribute = arguments["attribute"]
         provenance = arguments.get("provenance")
@@ -620,12 +672,16 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         return [TextContent(type="text", text=json.dumps({"error": "Not found"}, indent=2))]
 
     elif name == "wiki_search":
+        if db is None:
+            return [TextContent(type="text", text=json.dumps({"error": "Database layer not available"}, indent=2))]
         query = arguments.get("query", "")
         limit = arguments.get("limit", 20)
         results = db.search_wiki(query, limit)
         return [TextContent(type="text", text=json.dumps(results, indent=2, default=str))]
 
     elif name == "wiki_reconcile":
+        if db is None:
+            return [TextContent(type="text", text=json.dumps({"error": "Database layer not available"}, indent=2))]
         entity = arguments["entity"]
         attribute = arguments["attribute"]
         winning_id = arguments["winning_id"]
@@ -639,6 +695,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         }, indent=2))]
 
     elif name == "wiki_verify":
+        if db is None:
+            return [TextContent(type="text", text=json.dumps({"error": "Database layer not available"}, indent=2))]
         fact_id = arguments["fact_id"]
         updated = db.verify_fact(fact_id)
         return [TextContent(type="text", text=json.dumps({
@@ -647,6 +705,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         }, indent=2))]
 
     elif name == "wiki_stale":
+        if db is None:
+            return [TextContent(type="text", text=json.dumps({"error": "Database layer not available"}, indent=2))]
         window_days = arguments.get("window_days", 30)
         limit = arguments.get("limit", 100)
         facts = db.get_stale_facts(window_days, limit)

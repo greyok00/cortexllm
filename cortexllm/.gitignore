@@ -22,6 +22,18 @@
 !/model_router.py
 !/mcp-server-config.json
 !/hard-memory-templates/
+!/config/
+!/config/default.json
+
+# Additional tracked files missing from allowlist
+!/cold_distiller.py
+!/gateway_client.py
+!/migrate_to_sqlite.py
+!/profiles.py
+!/reliability.py
+!/ROADMAP.md
+!/setup.py
+!/benchmark.py
 
 # Python
 __pycache__/

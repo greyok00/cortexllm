@@ -30,8 +30,8 @@ LOW_VALUE_PATTERNS = [
     r"\b(?:I think|I believe|I feel|In my opinion|It seems|It appears|Basically|Actually|Honestly)\b",
     # Repeated punctuation
     r"[!?.]{3,}",
-    # Excessive whitespace
-    r"\n{3,}",
+    # Excessive whitespace (4+ newlines stripped; 3+ normalized by collapse_whitespace)
+    r"\n{4,}",
     # Trailing/leading whitespace on lines
     r"^\s+|\s+$",
 ]
@@ -181,25 +181,31 @@ def prune_context(cold_data: dict, warm_entries: List[Dict],
 
     # --- Cold memory pruning ---
     cold_text = ""
+    cold_entry_count = 0
+    cold_entry_texts = []  # tracks processed text per entry for accurate truncation
     if cold_data:
         stats["cold_entries_before"] = sum(len(v) for v in cold_data.values())
         # Collapse cold dict to text, stripping metadata
-        lines = []
         for name, entries in sorted(cold_data.items()):
             for e in entries:
+                cold_entry_count += 1
                 if isinstance(e, dict):
+                    entry_lines = []
                     for k, v in e.items():
                         if k in STRIP_METADATA_KEYS:
                             continue
                         if isinstance(v, str) and len(v) > 300:
                             v = v[:300] + "..."
-                        lines.append(f"{k}: {v}")
+                        entry_lines.append(f"{k}: {v}")
+                    entry_text = "\n".join(entry_lines)
                 else:
-                    lines.append(str(e)[:200])
-        cold_text = "\n".join(lines)
-        cold_text = strip_low_value(cold_text)
-        cold_text = collapse_whitespace(cold_text)
-        stats["cold_entries_after"] = len(lines)
+                    entry_text = str(e)[:200]
+                entry_text = strip_low_value(entry_text)
+                entry_text = collapse_whitespace(entry_text)
+                if entry_text:
+                    cold_entry_texts.append(entry_text)
+        cold_text = "\n\n".join(cold_entry_texts)
+        stats["cold_entries_after"] = cold_entry_count
 
     # --- Warm memory pruning ---
     if query:
@@ -229,20 +235,49 @@ def prune_context(cold_data: dict, warm_entries: List[Dict],
         # Truncate warm first, then cold
         warm_tokens = estimate_tokens(warm_text)
         cold_tokens = estimate_tokens(cold_text)
-        budget_for_warm = min(warm_tokens, max_tokens // 2)
+        total_tokens = warm_tokens + cold_tokens
+        if total_tokens > 0:
+            warm_ratio = warm_tokens / total_tokens
+            budget_for_warm = int(max_tokens * warm_ratio)
+        else:
+            budget_for_warm = max_tokens // 2
         budget_for_cold = max_tokens - budget_for_warm
 
         if warm_tokens > budget_for_warm:
-            ratio = budget_for_warm / max(warm_tokens, 1)
-            lines = warm_text.split("\n")
-            keep = max(1, int(len(lines) * ratio))
-            warm_text = "\n".join(lines[:keep]) + f"\n... ({len(lines) - keep} more entries truncated)"
+            # Token-aware truncation: keep entries until budget is exhausted
+            cumulative = 0
+            keep = 0
+            for entry in pruned_warm:
+                entry_text = f"{entry.get('role', 'user')}: {entry.get('content', '')}"
+                entry_tokens = estimate_tokens(entry_text)
+                if cumulative + entry_tokens > budget_for_warm:
+                    break
+                cumulative += entry_tokens
+                keep += 1
+            keep = max(1, keep)
+            truncated = len(pruned_warm) - keep
+            warm_text = "\n".join(
+                f"{pruned_warm[i].get('role', 'user')}: {pruned_warm[i].get('content', '')}"
+                for i in range(keep)
+            )
+            if truncated > 0:
+                warm_text += f"\n... ({truncated} more entries truncated)"
 
         if cold_tokens > budget_for_cold:
-            ratio = budget_for_cold / max(cold_tokens, 1)
-            lines = cold_text.split("\n")
-            keep = max(1, int(len(lines) * ratio))
-            cold_text = "\n".join(lines[:keep]) + f"\n... ({len(lines) - keep} more facts truncated)"
+            # Token-aware truncation: keep entries until budget is exhausted
+            cumulative = 0
+            keep = 0
+            for entry_text in cold_entry_texts:
+                entry_tokens = estimate_tokens(entry_text)
+                if cumulative + entry_tokens > budget_for_cold:
+                    break
+                cumulative += entry_tokens
+                keep += 1
+            keep = max(1, keep)
+            truncated = cold_entry_count - keep
+            cold_text = "\n\n".join(cold_entry_texts[:keep])
+            if truncated > 0:
+                cold_text += f"\n... ({truncated} more entries truncated)"
 
     stats["tokens_after"] = estimate_tokens(cold_text) + estimate_tokens(warm_text)
 

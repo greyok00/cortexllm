@@ -58,7 +58,7 @@ def route_memory_search(query: str, limit: int, memory_instance) -> List[Dict]:
     """Route memory_search to small model for ranking/filtering.
 
     The small model receives the raw search results and returns a relevance-ranked
-    subset. Falls back to simple substring matching if the small model is unavailable.
+    subset. Falls back to sorting by relevance score if the small model is unavailable.
     """
     # Get raw results from memory
     raw_results = memory_instance.search(query, limit * 3)  # Get more for ranking
@@ -72,17 +72,19 @@ def route_memory_search(query: str, limit: int, memory_instance) -> List[Dict]:
         return ranked[:limit]
 
     # Fallback: return raw results sorted by relevance
-    print("ModelRouter: falling back to primary model for search ranking")
+    print("ModelRouter: falling back to relevance-based sorting for search ranking")
     raw_results.sort(key=lambda x: x.get("relevance", 0), reverse=True)
     return raw_results[:limit]
 
 
 def route_memory_read(tier: str, platform: str, category: str,
-                      memory_instance) -> Optional[Dict]:
+                      memory_instance) -> Dict:
     """Route memory_read to small model for summarization/filtering.
 
     For cold memory with many entries, the small model can summarize or filter
     before returning. Falls back to returning all data if unavailable.
+
+    Returns a dict with consistent keys: {"data": ..., "total_entries": ..., "summarized": bool}.
     """
     if tier == "hot":
         data = memory_instance.get_hot(platform)
@@ -91,15 +93,19 @@ def route_memory_read(tier: str, platform: str, category: str,
     elif tier == "cold":
         data = memory_instance.get_cold(category)
     else:
-        return None
+        return {"data": None, "total_entries": 0, "summarized": False}
 
     # Only route to small model if there's substantial data to process
     if isinstance(data, list) and len(data) > 50:
         summary = _summarize_with_small_model(tier, data)
         if summary is not None:
-            return {"summary": summary, "total_entries": len(data)}
+            return {"data": summary, "total_entries": len(data), "summarized": True}
 
-    return data
+    # Wrap list data in consistent dict shape
+    if isinstance(data, list):
+        return {"data": data, "total_entries": len(data), "summarized": False}
+
+    return {"data": data, "total_entries": 1 if data else 0, "summarized": False}
 
 
 def _rank_with_small_model(query: str, results: List[Dict],

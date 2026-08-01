@@ -25,13 +25,12 @@ Connection model:
 import json
 import sqlite3
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 DB_DIR = Path.home() / ".config/cortexllm"
 DB_PATH = DB_DIR / "cortexllm.db"
-MEMORY_DIR = DB_DIR / "memory"
 
 # Default freshness window: facts not re-verified within this many days are flagged stale
 FRESHNESS_WINDOW_DAYS = 30
@@ -160,13 +159,6 @@ CREATE INDEX IF NOT EXISTS idx_cold_profile ON Memory_Cold(profile, category);
 CREATE INDEX IF NOT EXISTS idx_tasks_profile ON Active_Tasks(profile, status);
 CREATE INDEX IF NOT EXISTS idx_logs_profile ON Logs(profile, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_checkpoints_profile ON Checkpoints(profile, timestamp DESC);
-
--- Wiki layer indexes
-CREATE INDEX IF NOT EXISTS idx_cold_entity ON Memory_Cold(entity, attribute);
-CREATE INDEX IF NOT EXISTS idx_cold_provenance ON Memory_Cold(provenance);
-CREATE INDEX IF NOT EXISTS idx_cold_contradiction ON Memory_Cold(contradiction_flag);
-CREATE INDEX IF NOT EXISTS idx_cold_superseded ON Memory_Cold(superseded_by);
-CREATE INDEX IF NOT EXISTS idx_cold_last_verified ON Memory_Cold(last_verified);
 """
 
 # ---------------------------------------------------------------------------
@@ -199,7 +191,7 @@ def _run_migration(conn: sqlite3.Connection):
     existing = {row[1] for row in cursor.fetchall()}
     for col_name, col_type in MIGRATE_WIKI_COLUMNS:
         if col_name not in existing:
-            conn.execute(f"ALTER TABLE Memory_Cold ADD COLUMN {col_name} {col_type}")
+            conn.execute("ALTER TABLE Memory_Cold ADD COLUMN " + col_name + " " + col_type)
     for idx_sql in MIGRATE_WIKI_INDEXES:
         try:
             conn.execute(idx_sql)
@@ -241,6 +233,8 @@ class Database:
         DB_DIR.mkdir(parents=True, exist_ok=True)
         self._writer: Optional[sqlite3.Connection] = None
         self._readers = threading.local()
+        self._reader_conns: set = set()
+        self._reader_conns_lock = threading.Lock()
         self._init_lock = threading.Lock()
 
     # ------------------------------------------------------------------
@@ -256,7 +250,6 @@ class Database:
             self._writer.row_factory = sqlite3.Row
             self._writer.executescript(SCHEMA_SQL)
             _run_migration(self._writer)
-            self._writer.commit()
 
     @property
     def writer(self) -> sqlite3.Connection:
@@ -271,7 +264,10 @@ class Database:
             conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA query_only = ON;")
+            conn.execute("PRAGMA busy_timeout = 5000")
             self._readers.conn = conn
+            with self._reader_conns_lock:
+                self._reader_conns.add(conn)
         return self._readers.conn
 
     def close(self):
@@ -279,8 +275,14 @@ class Database:
         if self._writer:
             self._writer.close()
             self._writer = None
+        with self._reader_conns_lock:
+            for conn in list(self._reader_conns):
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+            self._reader_conns.clear()
         if hasattr(self._readers, 'conn') and self._readers.conn:
-            self._readers.conn.close()
             self._readers.conn = None
 
     # ------------------------------------------------------------------
@@ -377,11 +379,12 @@ class Database:
                     tags: list = None, metadata: dict = None) -> int:
         """Add a distilled fact to Memory_Cold. Source/confidence/tags required."""
         w = self.writer
+        now = datetime.utcnow().isoformat()
         cursor = w.execute(
-            "INSERT INTO Memory_Cold (profile, category, fact, source, confidence, tags, metadata) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO Memory_Cold (profile, category, fact, source, confidence, tags, metadata, last_verified) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (profile, category, fact, source, confidence,
-             json.dumps(tags or []), json.dumps(metadata or {}))
+             json.dumps(tags or []), json.dumps(metadata or {}), now)
         )
         w.commit()
         return cursor.lastrowid
@@ -403,46 +406,51 @@ class Database:
         - Both rows are preserved for provenance
         """
         w = self.writer
-        now = datetime.now().isoformat()
+        now = datetime.utcnow().isoformat()
 
-        # First: flag any existing non-flagged row for this key as contradicted
-        w.execute(
-            "UPDATE Memory_Cold SET contradiction_flag = 1, "
-            "  metadata = json_set(COALESCE(metadata, '{}'), '$.superseded_at', ?) "
-            "WHERE entity = ? AND attribute = ? AND provenance = ? AND contradiction_flag = 0",
-            (now, entity, attribute, provenance)
-        )
-        # Get the ID of the row we just flagged (if any)
-        old_row = w.execute(
-            "SELECT id FROM Memory_Cold "
-            "WHERE entity = ? AND attribute = ? AND provenance = ? AND contradiction_flag = 1 "
-            "  AND json_extract(COALESCE(metadata, '{}'), '$.superseded_at') = ? "
-            "ORDER BY timestamp DESC LIMIT 1",
-            (entity, attribute, provenance, now)
-        ).fetchone()
-        old_id = old_row["id"] if old_row else None
-
-        # Insert the new row
-        cursor = w.execute(
-            "INSERT INTO Memory_Cold "
-            "  (profile, category, fact, source, confidence, tags, metadata, "
-            "   entity, attribute, claim, evidence, provenance, last_verified) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (profile, category, claim, source, confidence,
-             json.dumps(tags or []), json.dumps(metadata or {}),
-             entity, attribute, claim,
-             json.dumps(evidence or []), provenance, now)
-        )
-        new_id = cursor.lastrowid
-
-        # If we flagged an old row, point its superseded_by at the new row
-        if old_id:
+        w.execute("BEGIN IMMEDIATE")
+        try:
+            # First: flag any existing non-flagged row for this key as contradicted
             w.execute(
-                "UPDATE Memory_Cold SET superseded_by = ? WHERE id = ?",
-                (new_id, old_id)
+                "UPDATE Memory_Cold SET contradiction_flag = 1, "
+                "  metadata = json_set(COALESCE(metadata, '{}'), '$.superseded_at', ?) "
+                "WHERE entity = ? AND attribute = ? AND provenance = ? AND contradiction_flag = 0",
+                (now, entity, attribute, provenance)
             )
+            # Get the ID of the row we just flagged (if any)
+            old_row = w.execute(
+                "SELECT id FROM Memory_Cold "
+                "WHERE entity = ? AND attribute = ? AND provenance = ? AND contradiction_flag = 1 "
+                "  AND json_extract(COALESCE(metadata, '{}'), '$.superseded_at') = ? "
+                "ORDER BY timestamp DESC LIMIT 1",
+                (entity, attribute, provenance, now)
+            ).fetchone()
+            old_id = old_row["id"] if old_row else None
 
-        w.commit()
+            # Insert the new row — fact stores a summary, claim stores the actual claim text
+            cursor = w.execute(
+                "INSERT INTO Memory_Cold "
+                "  (profile, category, fact, source, confidence, tags, metadata, "
+                "   entity, attribute, claim, evidence, provenance, last_verified) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (profile, category, entity + ": " + attribute, source, confidence,
+                 json.dumps(tags or []), json.dumps(metadata or {}),
+                 entity, attribute, claim,
+                 json.dumps(evidence or []), provenance, now)
+            )
+            new_id = cursor.lastrowid
+
+            # If we flagged an old row, point its superseded_by at the new row
+            if old_id:
+                w.execute(
+                    "UPDATE Memory_Cold SET superseded_by = ? WHERE id = ?",
+                    (new_id, old_id)
+                )
+
+            w.commit()
+        except Exception:
+            w.rollback()
+            raise
         return new_id
 
     def get_wiki_fact(self, entity: str, attribute: str,
@@ -478,11 +486,10 @@ class Database:
         Facts not verified within FRESHNESS_WINDOW_DAYS are flagged as stale
         but still returned (with stale=True) — never auto-deleted.
         """
-        now = datetime.now()
-        like_q = f"%{query}%"
+        like_q = "%" + query + "%"
         rows = self.reader().execute(
             "SELECT *, "
-            "  CAST(julianday('now') - julianday(COALESCE(last_verified, timestamp)) AS INTEGER) "
+            "  julianday('now') - julianday(COALESCE(last_verified, timestamp)) "
             "    AS days_since_verified "
             "FROM Memory_Cold "
             "WHERE contradiction_flag = 0 AND superseded_by IS NULL "
@@ -507,12 +514,16 @@ class Database:
         """Get Memory_Cold facts for a profile, optionally filtered by category."""
         if category:
             rows = self.reader().execute(
-                "SELECT * FROM Memory_Cold WHERE profile = ? AND category = ? ORDER BY timestamp DESC LIMIT ?",
+                "SELECT * FROM Memory_Cold WHERE profile = ? AND category = ? "
+                "AND contradiction_flag = 0 AND superseded_by IS NULL "
+                "ORDER BY timestamp DESC LIMIT ?",
                 (profile, category, limit)
             ).fetchall()
         else:
             rows = self.reader().execute(
-                "SELECT * FROM Memory_Cold WHERE profile = ? ORDER BY timestamp DESC LIMIT ?",
+                "SELECT * FROM Memory_Cold WHERE profile = ? "
+                "AND contradiction_flag = 0 AND superseded_by IS NULL "
+                "ORDER BY timestamp DESC LIMIT ?",
                 (profile, limit)
             ).fetchall()
         return [dict(r) for r in rows]
@@ -544,25 +555,28 @@ class Database:
         """
         w = self.writer
         # Clear contradiction_flag on the winner
-        w.execute(
+        cursor = w.execute(
             "UPDATE Memory_Cold SET contradiction_flag = 0, "
             "  metadata = json_set(COALESCE(metadata, '{}'), '$.reconciled_at', datetime('now')) "
             "WHERE id = ?",
             (winning_id,)
         )
-        # Mark all other rows in this chain as resolved (superseded_by points to winner)
+        if cursor.rowcount == 0:
+            w.commit()
+            return False
+        # Mark all other rows in this chain as resolved (clear flag, point to winner)
         if provenance:
             w.execute(
-                "UPDATE Memory_Cold SET "
+                "UPDATE Memory_Cold SET contradiction_flag = 0, "
                 "  metadata = json_set(COALESCE(metadata, '{}'), '$.reconciled_by', ?) "
-                "WHERE entity = ? AND attribute = ? AND provenance = ? AND id != ?",
+                "WHERE entity = ? AND attribute = ? AND provenance = ? AND id != ? AND contradiction_flag = 1",
                 (winning_id, entity, attribute, provenance, winning_id)
             )
         else:
             w.execute(
-                "UPDATE Memory_Cold SET "
+                "UPDATE Memory_Cold SET contradiction_flag = 0, "
                 "  metadata = json_set(COALESCE(metadata, '{}'), '$.reconciled_by', ?) "
-                "WHERE entity = ? AND attribute = ? AND id != ?",
+                "WHERE entity = ? AND attribute = ? AND id != ? AND contradiction_flag = 1",
                 (winning_id, entity, attribute, winning_id)
             )
         w.commit()
@@ -584,7 +598,7 @@ class Database:
 
     def get_stale_facts(self, window_days: int = None, limit: int = 100) -> List[Dict]:
         """Get facts not verified within the window. Never auto-deletes."""
-        window = window_days or FRESHNESS_WINDOW_DAYS
+        window = window_days if window_days is not None else FRESHNESS_WINDOW_DAYS
         rows = self.reader().execute(
             "SELECT * FROM Memory_Cold "
             "WHERE contradiction_flag = 0 AND superseded_by IS NULL "
@@ -603,8 +617,8 @@ class Database:
         """Set a worker state value (upsert)."""
         w = self.writer
         w.execute(
-            "INSERT OR REPLACE INTO Worker_State (worker, key, value, updated_at) "
-            "VALUES (?, ?, ?, datetime('now'))",
+            "INSERT INTO Worker_State (worker, key, value, updated_at) VALUES (?, ?, ?, datetime('now')) "
+            "ON CONFLICT(worker, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
             (worker, key, json.dumps(value))
         )
         w.commit()
@@ -644,8 +658,8 @@ class Database:
         """Set a worker config value (upsert)."""
         w = self.writer
         w.execute(
-            "INSERT OR REPLACE INTO Worker_Config (worker, key, value, updated_at) "
-            "VALUES (?, ?, ?, datetime('now'))",
+            "INSERT INTO Worker_Config (worker, key, value, updated_at) VALUES (?, ?, ?, datetime('now')) "
+            "ON CONFLICT(worker, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
             (worker, key, json.dumps(value))
         )
         w.commit()
@@ -708,7 +722,7 @@ class Database:
             params.append(since)
         where = " AND ".join(conditions) if conditions else "1"
         rows = self.reader().execute(
-            f"SELECT * FROM Earnings_Log WHERE {where} ORDER BY timestamp DESC",
+            "SELECT * FROM Earnings_Log WHERE " + where + " ORDER BY timestamp DESC",
             params
         ).fetchall()
         return [dict(r) for r in rows]
@@ -726,8 +740,8 @@ class Database:
             params.append(since)
         where = " AND ".join(conditions) if conditions else "1"
         rows = self.reader().execute(
-            f"SELECT site, SUM(amount) as total, COUNT(*) as count "
-            f"FROM Earnings_Log WHERE {where} GROUP BY site ORDER BY total DESC",
+            "SELECT site, SUM(amount) as total, COUNT(*) as count "
+            "FROM Earnings_Log WHERE " + where + " GROUP BY site ORDER BY total DESC",
             params
         ).fetchall()
         return {r["site"]: {"total": r["total"], "count": r["count"]} for r in rows}
@@ -765,8 +779,9 @@ class Database:
         """Register a new task."""
         w = self.writer
         cursor = w.execute(
-            "INSERT OR IGNORE INTO Active_Tasks (profile, task_id, description, metadata) "
-            "VALUES (?, ?, ?, ?)",
+            "INSERT INTO Active_Tasks (profile, task_id, description, metadata) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(task_id) DO UPDATE SET description = excluded.description, "
+            "  metadata = excluded.metadata, updated_at = datetime('now')",
             (profile, task_id, description, json.dumps(metadata or {}))
         )
         w.commit()
@@ -792,7 +807,7 @@ class Database:
         params.append(task_id)
         w = self.writer
         w.execute(
-            f"UPDATE Active_Tasks SET {', '.join(updates)} WHERE task_id = ?",
+            "UPDATE Active_Tasks SET " + ", ".join(updates) + " WHERE task_id = ?",
             params
         )
         w.commit()
@@ -810,7 +825,7 @@ class Database:
             params.append(status)
         where = " AND ".join(conditions) if conditions else "1"
         rows = self.reader().execute(
-            f"SELECT * FROM Active_Tasks WHERE {where} ORDER BY created_at DESC",
+            "SELECT * FROM Active_Tasks WHERE " + where + " ORDER BY created_at DESC",
             params
         ).fetchall()
         return [dict(r) for r in rows]
@@ -845,7 +860,7 @@ class Database:
             params.append(event_type)
         where = " AND ".join(conditions) if conditions else "1"
         rows = self.reader().execute(
-            f"SELECT * FROM Logs WHERE {where} ORDER BY timestamp DESC LIMIT ?",
+            "SELECT * FROM Logs WHERE " + where + " ORDER BY timestamp DESC LIMIT ?",
             params + [limit]
         ).fetchall()
         return [dict(r) for r in rows]

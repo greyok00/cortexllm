@@ -70,18 +70,18 @@ def can_save_to_warm(platform=None):
     """Check if this platform can save to warm memory (staggered turns)"""
     plat = platform or get_platform()
     state = load_state()
-    
+
     now = datetime.now()
     last_save = state["last_save"].get(plat)
-    
+
     # If never saved, can save
     if last_save is None:
         return True
-    
+
     # Check if enough time passed (2 minutes per platform = 4 min cycle)
     last_time = datetime.fromisoformat(last_save)
     elapsed = (now - last_time).total_seconds() / 60
-    
+
     # Can save if it's been 2+ minutes since our last save
     return elapsed >= state["turn_interval_minutes"]
 
@@ -89,7 +89,7 @@ def should_save_to_warm_now(platform=None):
     """Check if it's this platform's turn to save to warm"""
     plat = platform or get_platform()
     state = load_state()
-    
+
     # Simple round-robin: check whose turn it is
     return state["next_turn"] == plat
 
@@ -114,7 +114,7 @@ def record_save(platform=None):
 def load_hot(platform=None):
     """Load hot memory session for specified platform"""
     hot_path = get_hot_path(platform)
-    
+
     if not hot_path.exists():
         plat = platform or get_platform()
         return {
@@ -147,7 +147,7 @@ def load_hot(platform=None):
                 "Platform": entry.get("platform", "openclaw"),
                 "Content": entry.get("content", ""),
                 "IsUser": entry.get("role", "") == "user",
-                "IsSystem": entry.get("role", "") == "assistant",
+                "IsSystem": entry.get("role", "") == "system",
                 "IsError": False,
                 "Time": entry.get("timestamp", datetime.now().isoformat()),
                 "TokensIn": entry.get("tokens_in", 0),
@@ -204,10 +204,10 @@ def load_warm():
     """Load warm (per-profile) memory - dict format"""
     if not WARM_MEMORY.exists():
         return []
-    
+
     with open(WARM_MEMORY) as f:
         data = json.load(f)
-    
+
     # Handle both dict format and old list
     if isinstance(data, dict):
         return data.get("messages", [])
@@ -229,7 +229,7 @@ def prune_warm_messages(messages):
             seen.add(norm)
         # Strip verbose fields, keep essentials
         slim = {
-            "role": "user" if m.get("IsUser", m.get("role", "")) == "user" else "assistant",
+            "role": "user" if m.get("IsUser", False) or m.get("role", "") == "user" else "assistant",
             "content": content[:500] if len(content) > 500 else content,
             "timestamp": m.get("timestamp", m.get("Time", m.get("time", ""))),
             "platform": m.get("platform", m.get("Platform", "?")),
@@ -251,7 +251,7 @@ def save_warm(messages, platform=None):
         "platform": "per_profile",
         "messages": pruned
     }
-    
+
     tmp = WARM_MEMORY.with_suffix('.tmp')
     with open(tmp, 'w') as f:
         fcntl.flock(f.fileno(), fcntl.LOCK_EX)
@@ -348,7 +348,7 @@ def message_to_md(message):
             return f"[{time_str}] [{platform}] [tool] {content[:200]}"
         else:
             return f"[{time_str}] [{platform}] {content}"
-    
+
     # Old format fallback
     content = message.get("Content", "")
     if not message.get("IsUser", False):
@@ -360,7 +360,7 @@ def message_to_md(message):
 def append_message(content, is_user=False, platform=None, force_warm=False):
     """
     Append a message to hot memory and optionally update warm.
-    
+
     Args:
         content: Message content
         is_user: True if user message
@@ -369,36 +369,38 @@ def append_message(content, is_user=False, platform=None, force_warm=False):
     """
     plat = platform or get_platform()
     session = load_hot(platform)
-    
+
     msg = md_to_message(content, is_user, platform)
     session["Messages"].append(msg)
-    
+
     # Enforce 50 message limit per platform hot memory
     if len(session["Messages"]) > 50:
         archived = session["Messages"][:len(session["Messages"]) - 50]
         session["Messages"] = session["Messages"][-50:]
         archive_to_cold(archived, session["SessionID"], platform)
-    
+
     save_hot(session, platform)
-    
+
     # Staggered warm memory update
     if force_warm or can_save_to_warm(platform):
         # Merge both hot memories for warm storage
         all_messages = session["Messages"].copy()
-        
-        # Load other platform's hot memory and merge
-        other_plat = "opencode" if plat == "openclaw" else "openclaw"
-        try:
-            other_session = load_hot(other_plat)
-            all_messages.extend(other_session.get("Messages", []))
-        except:
-            pass  # Other platform may not have hot memory yet
-        
+
+        # Load other platforms' hot memory and merge
+        for other_plat in ["openclaw", "opencode", "claude"]:
+            if other_plat == plat:
+                continue
+            try:
+                other_session = load_hot(other_plat)
+                all_messages.extend(other_session.get("Messages", []))
+            except:
+                pass  # Other platform may not have hot memory yet
+
         # Sort by timestamp and save merged to warm
-        all_messages.sort(key=lambda m: m.get("Time", ""))
+        all_messages.sort(key=lambda m: m.get("Time", m.get("time", "")))
         save_warm(all_messages, platform)
         record_save(platform)
-    
+
     return msg
 
 def get_recent(limit=20, platform=None):
@@ -415,7 +417,7 @@ def get_recent(limit=20, platform=None):
             return [message_to_md(m) for m in messages]
         except:
             pass
-    
+
     # Fallback to hot memory
     session = load_hot(platform)
     messages = session["Messages"][-limit:]
@@ -449,10 +451,10 @@ def search_memory(query, platform=None):
                 sessions.append((plat, load_hot(plat)))
             except:
                 pass
-    
+
     results = []
     query_lower = query.lower()
-    
+
     for plat, session in sessions:
         for i, msg in enumerate(session.get("Messages", [])):
             content = msg.get("Content", "").lower()
@@ -464,7 +466,7 @@ def search_memory(query, platform=None):
                     "time": msg.get("Time", ""),
                     "is_user": msg.get("IsUser", False)
                 })
-    
+
     return results
 
 def archive_to_cold(messages, session_id, platform=None):
@@ -526,11 +528,11 @@ def clear_session(platform=None):
     """Start a new session for specified platform"""
     plat = platform or get_platform()
     old_session = load_hot(platform)
-    
+
     # Archive current session
     if old_session.get("Messages"):
         archive_to_cold(old_session["Messages"], old_session["SessionID"], platform)
-    
+
     # Create new session
     new_session = {
         "Platform": plat,
@@ -541,9 +543,9 @@ def clear_session(platform=None):
         "TotalTokens": 0,
         "IsDirty": False
     }
-    
+
     save_hot(new_session, platform)
-    
+
     # Don't clear warm memory - it's shared
     return new_session["SessionID"]
 

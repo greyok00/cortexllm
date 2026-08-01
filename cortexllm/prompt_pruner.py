@@ -131,13 +131,15 @@ def restore_dependencies(messages: list, cold: dict) -> tuple:
 
     # Check cold memory for DEFINE entries to restore
     restored = []
+    seen = set()
     for name, entries in cold.items():
         for e in entries:
             if isinstance(e, dict):
                 for v in e.values():
                     if isinstance(v, str):
                         for tag in missing:
-                            if f'DEFINE:{tag}' in v:
+                            if f'DEFINE:{tag}' in v and v not in seen:
+                                seen.add(v)
                                 restored.append(v)
 
     return messages + restored, cold
@@ -175,7 +177,7 @@ def enforce_budget(cold: dict, warm: list, task_prompt: str, token_budget: int) 
         for e in entries:
             if isinstance(e, dict):
                 # Check if entry has @on_demand tags
-                if 'on_demand' in str(e).lower():
+                if '@on_demand' in str(e).lower():
                     # Only include if task mentions the keyword
                     keywords = re.findall(r'@on_demand:(\w+)', str(e).lower())
                     if keywords and not any(kw in task_lower for kw in keywords):
@@ -254,7 +256,7 @@ def prune_from_files(cold_dir: str, warm_file: str, task_prompt: str = "", token
             for m in raw:
                 if isinstance(m, dict):
                     content = m.get("content", m.get("Content", ""))
-                    role = m.get("role", m.get("role", "?"))
+                    role = m.get("role", m.get("Role", "?"))
                     ts = str(m.get("timestamp", m.get("Time", "")))[:19]
                     plat = m.get("platform", m.get("Platform", "?"))
                     warm.append(f"[{ts}] [{plat}] [{role}] {content}")

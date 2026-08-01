@@ -79,6 +79,7 @@ def check_health(session_path: Path) -> dict:
         result["file_size_kb"] = round(size_kb, 1)
     except:
         result["healthy"] = False
+        result["status"] = "red"
         result["warnings"].append("Cannot read session file")
         return result
 
@@ -194,8 +195,12 @@ def run_heartbeat() -> dict:
         return result
 
     # Check health (read-only)
+    # Preserve existing warnings (e.g. wiki contradictions) before health overwrites them
+    existing_warnings = result.get("warnings", [])
     health = check_health(session)
     result.update(health)
+    if existing_warnings:
+        result["warnings"] = existing_warnings + result["warnings"]
 
     # Write health status (advisory only)
     HEALTH_FILE.write_text(json.dumps({

@@ -14,6 +14,7 @@ Warm Memory Algorithm:
   - Never completely loses profile context
 """
 import json
+import re
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Any, Optional
@@ -31,11 +32,20 @@ WARM_LIMIT = 2000
 WARM_BUFFER_RATIO = 0.3
 WARM_RECENT_RATIO = 0.7
 
+# Minimum new messages before warm buffer rewrite is triggered
+WARM_DEBOUNCE_THRESHOLD = 10
+
+
+def _sanitize_platform(name: str) -> str:
+    """Allow only alphanumeric, hyphens, and underscores in platform names."""
+    return re.sub(r"[^a-zA-Z0-9_-]", "_", name)
+
 
 class MemoryManager:
     def __init__(self):
         db.initialize()
         self.last_commands = {}
+        self._warm_write_count = 0
         self._load_state()
 
     def _load_state(self):
@@ -54,7 +64,9 @@ class MemoryManager:
             self.last_commands = {}
 
     def _save_state(self):
-        """Persist state is now handled by SQLite — no-op."""
+        """Intentionally a no-op since SQLite handles persistence automatically
+        via the Checkpoints table. State is loaded from SQLite on init and
+        written on each add_to_hot call — no manual save needed."""
         pass
 
     def add_to_hot(self, platform: str, content: str, role: str = "user",
@@ -66,6 +78,7 @@ class MemoryManager:
         # Skip code in hot memory — send directly to warm
         if is_code:
             self._add_to_warm_direct(platform, content, role, tokens_in, tokens_out, metadata)
+            self._update_warm_buffer(platform)
             return {"status": "saved_to_warm", "reason": "code_excluded_from_hot"}
 
         # Write to SQLite synchronously before any LLM call
@@ -109,11 +122,12 @@ class MemoryManager:
             )
 
         # Update warm buffer
-        self._update_warm_buffer()
+        self._update_warm_buffer(platform)
 
         # Write-through to hard file (dual persistence)
         try:
             self._write_through_hot(platform)
+            self._write_through_warm(platform)
         except Exception:
             pass  # Non-critical — SQLite is canonical
 
@@ -145,27 +159,49 @@ class MemoryManager:
         except Exception:
             pass
 
-    def _update_warm_buffer(self):
+    def _update_warm_buffer(self, platform: str = None):
         """
         Update warm memory with BUFFER ALGORITHM:
         - 70% recent messages (weighted by profile activity)
         - 30% preserved buffer from same profile (never lost)
 
         Per-profile memory: Each profile's context is preserved independently.
+
+        Debounce: only rewrites when at least WARM_DEBOUNCE_THRESHOLD new
+        messages have been added since the last rewrite.
         """
+        self._warm_write_count += 1
+        if self._warm_write_count < WARM_DEBOUNCE_THRESHOLD:
+            return
+        self._warm_write_count = 0
+
         reader = db.reader()
 
-        # Get recent messages from hot (all profiles)
-        recent_rows = reader.execute(
-            "SELECT * FROM Memory_Hot ORDER BY timestamp DESC LIMIT ?",
-            (int(WARM_LIMIT * WARM_RECENT_RATIO),)
-        ).fetchall()
+        # Get recent messages from hot (filtered by platform if specified)
+        if platform:
+            profile_filter = f"platform:{platform}"
+            recent_rows = reader.execute(
+                "SELECT * FROM Memory_Hot WHERE profile = ? ORDER BY timestamp DESC LIMIT ?",
+                (profile_filter, int(WARM_LIMIT * WARM_RECENT_RATIO))
+            ).fetchall()
+        else:
+            recent_rows = reader.execute(
+                "SELECT * FROM Memory_Hot ORDER BY timestamp DESC LIMIT ?",
+                (int(WARM_LIMIT * WARM_RECENT_RATIO),)
+            ).fetchall()
 
         # Get existing warm messages for buffer preservation
-        warm_rows = reader.execute(
-            "SELECT * FROM Memory_Warm ORDER BY timestamp DESC LIMIT ?",
-            (WARM_LIMIT,)
-        ).fetchall()
+        if platform:
+            profile_filter = f"platform:{platform}"
+            warm_rows = reader.execute(
+                "SELECT * FROM Memory_Warm WHERE profile = ? ORDER BY timestamp DESC LIMIT ?",
+                (profile_filter, WARM_LIMIT)
+            ).fetchall()
+        else:
+            warm_rows = reader.execute(
+                "SELECT * FROM Memory_Warm ORDER BY timestamp DESC LIMIT ?",
+                (WARM_LIMIT,)
+            ).fetchall()
 
         # Build buffer: 30% from existing warm (oldest first for history)
         buffer_size = int(WARM_LIMIT * WARM_BUFFER_RATIO)
@@ -174,11 +210,11 @@ class MemoryManager:
         # Combine: recent (70%) + buffer (30%)
         all_rows = list(recent_rows) + list(buffer_rows)
 
-        # Deduplicate by content+role to avoid exact duplicates
+        # Deduplicate by content+role using full content
         seen = set()
         deduped = []
         for r in all_rows:
-            key = (r["profile"], r["role"], r["content"][:200])
+            key = (r["profile"], r["role"], r["content"])
             if key not in seen:
                 seen.add(key)
                 deduped.append(r)
@@ -187,8 +223,9 @@ class MemoryManager:
         deduped.sort(key=lambda r: r["timestamp"] if r["timestamp"] else "", reverse=True)
         deduped = deduped[:WARM_LIMIT]
 
-        # Write to warm table (clear and re-insert)
+        # Write to warm table (clear and re-insert in a transaction)
         w = db.writer
+        w.execute("BEGIN IMMEDIATE")
         w.execute("DELETE FROM Memory_Warm")
         for row in deduped:
             w.execute(
@@ -333,7 +370,8 @@ class MemoryManager:
         self.HARD_MEMORY_DIR.mkdir(parents=True, exist_ok=True)
 
     def _hard_file_path(self, platform: str) -> Path:
-        return self.HARD_MEMORY_DIR / f"{platform}.md"
+        safe = _sanitize_platform(platform)
+        return self.HARD_MEMORY_DIR / f"{safe}.md"
 
     def _write_through_hot(self, platform: str):
         """Synchronously mirror hot memory for a platform to its hard file."""
@@ -379,33 +417,43 @@ class MemoryManager:
         for hard_file in self.HARD_MEMORY_DIR.glob("*.md"):
             platform = hard_file.stem
             profile = f"platform:{platform}"
-            sqlite_count = len(db.get_hot(profile, limit=1))
-            if sqlite_count == 0 and hard_file.stat().st_size > 0:
+            sqlite_hot_count = len(db.get_hot(profile, limit=1))
+            sqlite_warm_count = len(db.get_warm(profile, limit=1))
+            if sqlite_hot_count == 0 and sqlite_warm_count == 0 and hard_file.stat().st_size > 0:
                 # SQLite has no data but file exists — file is stale, remove it
                 hard_file.unlink()
-            elif sqlite_count > 0:
-                # SQLite has data — regenerate file from SQLite
+            elif sqlite_hot_count > 0:
+                # SQLite has data — regenerate files from SQLite
                 self._write_through_hot(platform)
+                self._write_through_warm(platform)
 
 
-# Create global instance
-manager = MemoryManager()
+# Lazy initialization — manager is created on first access
+_manager_instance = None
+
+
+def get_manager() -> MemoryManager:
+    """Return the singleton MemoryManager, creating it on first call."""
+    global _manager_instance
+    if _manager_instance is None:
+        _manager_instance = MemoryManager()
+    return _manager_instance
 
 
 def add_message(platform, content, role="user", **kwargs):
-    return manager.add_to_hot(platform, content, role, **kwargs)
+    return get_manager().add_to_hot(platform, content, role, **kwargs)
 
 
 def save_knowledge(category, knowledge, immediate=True):
-    return manager.save_to_cold(category, knowledge, immediate)
+    return get_manager().save_to_cold(category, knowledge, immediate)
 
 
 def get_resume(platform=None):
-    return manager.get_session_resume(platform)
+    return get_manager().get_session_resume(platform)
 
 
 def get_stats():
-    return manager.get_platform_stats()
+    return get_manager().get_platform_stats()
 
 
 if __name__ == "__main__":
