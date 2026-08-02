@@ -27,6 +27,7 @@ dependency.
 - **Auto-save:** Hooks save every prompt/response through the memory pipeline
 - **Context replay:** Last prompt replayed after auto-compact
 - **Minified prompts:** CLAUDE.md and AGENT.md stripped to essential signal
+- **Heartbeat daemon:** Background monitor using a tiny LLM (qwen2.5:0.5b, ~350 MB) for auto-compact, cold distillation, and memory health alerts. Runs in ~2 GB free VRAM alongside the main model.
 
 ## Requirements
 
@@ -47,6 +48,11 @@ bash install.sh
 cortexllm_call.py recent --limit 12
 cortexllm_call.py write --role user --content "your prompt"
 cortexllm_call.py search "query" --limit 10
+
+# Heartbeat daemon (requires Ollama + qwen2.5:0.5b)
+python3 lib/heartbeat_daemon.py start --interval 30
+python3 lib/heartbeat_daemon.py status
+python3 lib/heartbeat_daemon.py stop
 ```
 
 ## MCP tools
