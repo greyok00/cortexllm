@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # hook-save-context.sh — postToolUse hook for Claude Code
-# Saves EVERY tool use to CortexLLM hot memory.
-# Called synchronously (fast — SQLite write takes ~5ms).
+# Saves EVERY tool use to CortexLLM hot memory (NDJSON append — no lock needed).
 #
 # Input (stdin): JSON with {tool, args, result, description}
 
@@ -9,11 +8,6 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SAVE_SCRIPT="$SCRIPT_DIR/save-context.py"
-LOCK_FILE="/tmp/cortexllm-save.lock"
-
-# Serialize with flock — prevents concurrent read-modify-write clobber
-exec 8>"$LOCK_FILE"
-flock -x 8 || exit 1
 
 # Read stdin — if nothing piped, exit silently
 INPUT=$(cat /dev/stdin 2>/dev/null || echo "")
@@ -76,5 +70,5 @@ else
     CONTEXT="[$TOOL] $DESC"
 fi
 
-# Save to hot memory (synchronous, fast)
+# Save to hot memory (NDJSON append — fast, no lock)
 python3 "$SAVE_SCRIPT" --role assistant --platform claude "$CONTEXT" 2>/dev/null || true

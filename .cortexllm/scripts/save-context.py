@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 save-context.py — Save current context to CortexLLM memory.
-Writes directly to SQLite (primary) and JSON (fallback) so the local model
-can immediately access the most recent context.
+Writes to SQLite (primary) and NDJSON (append-only fallback).
+No locks needed — NDJSON is append-only, SQLite handles concurrency natively.
 
 Usage:
   python3 save-context.py "What I'm working on right now"
@@ -14,7 +14,6 @@ import os
 import sys
 import json
 import argparse
-import fcntl
 from pathlib import Path
 from datetime import datetime
 
@@ -22,6 +21,7 @@ from datetime import datetime
 CORTEXLLM_DIR = Path.home() / ".config/cortexllm"
 HOT_DIR = CORTEXLLM_DIR / "memory/hot"
 PLATFORM = os.environ.get("CORTEXLLM_PLATFORM", "claude")
+HOT_LIMIT = 500  # Max messages per platform file
 
 # Try to use SQLite (primary storage)
 try:
@@ -32,25 +32,18 @@ except ImportError:
     HAS_SQLITE = False
 
 
-LOCK_FILE = Path("/tmp/cortexllm-save.lock")
-
-
-def _acquire_lock():
-    """Acquire exclusive lock on LOCK_FILE (blocking)."""
-    lock_path = str(LOCK_FILE)
-    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
-    fcntl.flock(fd, fcntl.LOCK_EX)
-    return fd
-
-
-def _release_lock(fd):
-    """Release lock and close fd."""
-    fcntl.flock(fd, fcntl.LOCK_UN)
-    os.close(fd)
+def _trim_ndjson(file_path: Path, limit: int = HOT_LIMIT):
+    """If NDJSON file exceeds limit, trim to last N lines (rare)."""
+    try:
+        lines = file_path.read_text().strip().split('\n')
+        if len(lines) > limit + 50:  # buffer before trimming
+            file_path.write_text('\n'.join(lines[-limit:]) + '\n')
+    except (OSError, ValueError):
+        pass
 
 
 def save_to_memory(content: str, role: str = "user", platform: str = PLATFORM):
-    """Save content to both SQLite and JSON memory."""
+    """Save content to both SQLite and NDJSON memory. No locks needed."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     message = {
         "role": role,
@@ -58,7 +51,7 @@ def save_to_memory(content: str, role: str = "user", platform: str = PLATFORM):
         "timestamp": timestamp,
     }
 
-    # Write to SQLite (primary) — safe, uses single-writer connection
+    # Write to SQLite (primary) — safe, handles concurrency natively
     if HAS_SQLITE:
         try:
             conn = db.writer
@@ -68,33 +61,20 @@ def save_to_memory(content: str, role: str = "user", platform: str = PLATFORM):
                 (f"platform:{platform}", role, content, platform, "{}")
             )
             conn.commit()
-            print(f"[save-context] Written to SQLite (platform: {platform})", file=sys.stderr)
         except Exception as e:
             print(f"[save-context] SQLite write failed: {e}", file=sys.stderr)
 
-    # Also write to JSON file (fallback) — lock to prevent concurrent clobber
-    lock_fd = _acquire_lock()
+    # Write to NDJSON file (append-only fallback) — no lock needed
+    hot_file = HOT_DIR / f"{platform}.jsonl"
+    hot_file.parent.mkdir(parents=True, exist_ok=True)
+
     try:
-        hot_file = HOT_DIR / f"{platform}.json"
-        hot_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(hot_file, 'a') as f:
+            f.write(json.dumps(message) + '\n')
+        _trim_ndjson(hot_file, HOT_LIMIT)
+    except OSError as e:
+        print(f"[save-context] NDJSON write failed: {e}", file=sys.stderr)
 
-        data = {"platform": platform, "messages": []}
-        if hot_file.exists():
-            try:
-                data = json.loads(hot_file.read_text())
-            except:
-                pass
-
-        messages = data.get("messages", [])
-        messages.append(message)
-        messages = messages[-500:]  # Keep last 500
-        data["messages"] = messages
-        hot_file.write_text(json.dumps(data, indent=2))
-        print(f"[save-context] Written to JSON ({hot_file})", file=sys.stderr)
-    finally:
-        _release_lock(lock_fd)
-
-    print(f"[save-context] Saved: {content[:80]}...", file=sys.stderr)
     return True
 
 

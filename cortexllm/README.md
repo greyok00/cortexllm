@@ -31,7 +31,7 @@ Structured facts with provenance tracking — your agents can record what they l
 Ollama, Claude, GPT, local models — doesn't matter. CortexLLM is model-agnostic. The MCP server speaks standard protocol, so any MCP-compatible agent connects instantly.
 
 ### 🔄 Never Loses Data
-Dual persistence writes to both SQLite and flat files simultaneously. If one goes down, the other saves you. SQLite is the source of truth; flat files are the safety net.
+Dual persistence writes to both SQLite and NDJSON files simultaneously. If one goes down, the other saves you. SQLite is the source of truth; NDJSON append is the safety net — no locks, no races.
 
 ### 🎯 Smarter Memory, Less Noise
 Built-in pruning strips out low-value content before it reaches your model. Context pruning trims the fat. DOM pruning strips web page clutter. Your model gets clean, relevant context every time.
@@ -91,7 +91,7 @@ Run `python3 benchmark.py` to reproduce. Results from a standard workstation (SQ
 | **Model agnostic** | ✅ Any MCP agent | ✅ Any LLM | ❌ Own runtime | ✅ Any LLM |
 | **Conflict resolution** | ✅ SQLite UPSERT | ❌ Recency scoring | ❌ Agent-driven | ❌ Last-write-wins |
 | **Freshness tracking** | ✅ Decay-weighted | ❌ Manual delete | ❌ None | ❌ None |
-| **Dual persistence** | ✅ SQLite + flat files | ❌ Single store | ❌ Single store | ❌ Single store |
+| **Dual persistence** | ✅ SQLite + NDJSON append | ❌ Single store | ❌ Single store | ❌ Single store |
 | **Context pruning** | ✅ Built-in | ❌ None | ✅ Agent-driven | ❌ None |
 | **DOM pruning** | ✅ Built-in | ❌ None | ❌ None | ❌ None |
 | **Wiki layer** | ✅ Structured facts | ❌ Opaque vectors | ❌ Raw text | ❌ Graph only |
@@ -218,6 +218,20 @@ WHERE contradiction_flag = 0 AND superseded_by IS NULL;
 - **Any MCP client** — Connect to `cortexllm_mcp_server.py`
 
 ---
+
+## Changelog
+
+### v3.2.0 — Atomic NDJSON, Session Resume, Visual Output
+- **Atomic NDJSON append** — hot memory switched from read-modify-write+flock to append-only NDJSON. No locks, no races, no timeouts.
+- **Lock-free hooks** — removed all `flock`/`fcntl` from hook scripts and writers. Hooks complete instantly.
+- **Session resume** — new CLAUDE.md rules: "continue"/"go"/"retry" triggers memory read + verbatim last prompt quote.
+- **Visual startup dashboard** — cold/hot/warm memory shown in tables with emojis. Hard rules extracted and displayed prominently.
+- **Response style overhaul** — default to tables > charts > checklists > lists > emojis. Never dump raw tool names.
+- **Hard Rules → Cold Memory** — user-stated rules saved to cold memory instead of editing CLAUDE.md.
+- **CLAUDE.md minified** — global: 9763B → 3743B (62% smaller). CortexAgent: 1101B. Both locked read-only.
+- **Auto-update disabled** — `CLAUDE_CODE_DISABLE_UPDATE=1` in wrapper. `chattr +i` + `chmod 444` protection.
+- **All writers migrated** — `save-context.py`, `save-session.py` (x2), `browser_memory_hook.py`, `scheduler/core.py`, `canvas_homework_checker.py`, `cortexllm_mcp_server.py` all use NDJSON append.
+- **25 legacy .json files migrated** to .jsonl and cleaned up.
 
 ## License
 

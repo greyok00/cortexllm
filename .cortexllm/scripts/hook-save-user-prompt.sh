@@ -1,16 +1,11 @@
 #!/usr/bin/env bash
 # hook-save-user-prompt.sh — UserPromptSubmit hook for Claude Code
-# Saves every user prompt to CortexLLM hot memory.
+# Saves every user prompt to CortexLLM hot memory (NDJSON append — no lock needed).
 
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SAVE_SCRIPT="$SCRIPT_DIR/save-context.py"
-LOCK_FILE="/tmp/cortexllm-save.lock"
-
-# Serialize with flock — prevents concurrent read-modify-write clobber
-exec 8>"$LOCK_FILE"
-flock -x 8 || exit 1
 
 INPUT=$(cat /dev/stdin 2>/dev/null || echo "")
 if [ -z "$INPUT" ]; then
